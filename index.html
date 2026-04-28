@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Roteirizador Campinas</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;700&family=IBM+Plex+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --sans: 'IBM Plex Sans', sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+  --bg: #f4f3ef;
+  --white: #ffffff;
+  --border: #e0ddd7;
+  --text: #18181b;
+  --muted: #71717a;
+  --c1: #2563eb;
+  --c2: #ea580c;
+  --HDR: 50px;
+  --PNL: 420px;
+}
+html, body { height: 100%; overflow: hidden; font-family: var(--sans); background: var(--bg); color: var(--text); }
+
+/* HEADER */
+#hdr {
+  position: fixed; top: 0; left: 0; right: 0; height: var(--HDR); z-index: 1000;
+  background: #18181b; display: flex; align-items: center; justify-content: space-between; padding: 0 1rem; gap: 1rem;
+}
+.logo { font-family: var(--mono); font-size: .85rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: .5rem; }
+.pill { font-size: .68rem; padding: .15rem .45rem; border-radius: 2px; font-weight: 700; border: 1px solid rgba(255,255,255,.25); color: rgba(255,255,255,.5); cursor: pointer; background: transparent; font-family: var(--mono); }
+.pill.c1 { background: var(--c1); border-color: var(--c1); color: #fff; }
+.pill.c2 { background: var(--c2); border-color: var(--c2); color: #fff; }
+#hdr-mid { font-family: var(--mono); font-size: .68rem; color: rgba(255,255,255,.35); }
+.hbtn { font-family: var(--mono); font-size: .68rem; padding: .24rem .6rem; border-radius: 2px; cursor: pointer; border: 1px solid rgba(255,255,255,.2); background: transparent; color: rgba(255,255,255,.6); }
+.hbtn:hover { color: #fff; border-color: rgba(255,255,255,.5); }
+.hbtn.wh { background: #fff; color: #18181b; border-color: #fff; }
+.hbtn.rd { border-color: #f87171; color: #f87171; }
+.hbtn.rd:hover { background: #ef4444; border-color: #ef4444; color: #fff; }
+#spin-wrap { display: none; font-family: var(--mono); font-size: .68rem; color: rgba(255,255,255,.4); align-items: center; gap: .3rem; }
+#spin-wrap.on { display: flex; }
+.spin { display: inline-block; animation: rot .8s linear infinite; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+/* PANEL */
+#panel {
+  position: fixed; top: var(--HDR); left: 0; bottom: 0; width: var(--PNL);
+  background: var(--white); border-right: 1px solid var(--border); z-index: 99;
+}
+
+/* TABS */
+#tabs { position: fixed; top: var(--HDR); left: 0; width: var(--PNL); height: 36px; display: flex; border-bottom: 1px solid var(--border); background: var(--white); z-index: 100; }
+.tab { flex: 1; padding: .5rem; font-family: var(--mono); font-size: .65rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .04em; color: var(--muted); border: none;
+  background: transparent; cursor: pointer; border-bottom: 2px solid transparent; }
+.tab.on { color: var(--text); border-bottom-color: var(--text); }
+.tab:disabled { opacity: .3; cursor: not-allowed; }
+
+/* PANE 1 */
+#pane1 { position: fixed; top: 86px; left: 0; width: var(--PNL); bottom: 0; overflow-y: auto; display: flex; flex-direction: column; padding: .9rem; gap: .65rem; background: var(--white); z-index: 99; }
+.lbl { font-family: var(--mono); font-size: .65rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; display: flex; justify-content: space-between; align-items: center; }
+#addr-input {
+  flex: 1; min-height: 220px; resize: vertical; padding: .65rem; border: 1px solid var(--border);
+  border-radius: 3px; font-family: var(--mono); font-size: .75rem; line-height: 1.8;
+  background: #fafaf8; color: var(--text); outline: none;
+}
+#addr-input:focus { border-color: var(--text); background: #fff; }
+#addr-input::placeholder { color: #bbb; }
+#preview { display: flex; flex-direction: column; gap: .18rem; }
+.pv-item { display: flex; align-items: center; gap: .38rem; padding: .25rem .4rem; border-radius: 2px; font-size: .72rem; border: 1px solid var(--border); background: #fafaf8; }
+.pv-item.ok { border-color: #bbf7d0; }
+.pv-item.pend { border-color: #fde68a; background: #fffbeb; }
+.pend .pv-st { color: #92400e; }
+.pv-item.err { border-color: #fecaca; background: #fff5f5; }
+.pv-n { font-family: var(--mono); font-size: .58rem; color: var(--muted); min-width: 16px; }
+.pv-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pv-st { font-family: var(--mono); font-size: .58rem; }
+.ok .pv-st { color: #16a34a; } .err .pv-st { color: #dc2626; }
+#btn-proc { width: 100%; padding: .55rem; border-radius: 3px; font-family: var(--mono); font-size: .76rem; font-weight: 700; cursor: pointer; border: none; background: var(--text); color: var(--bg); text-transform: uppercase; letter-spacing: .02em; flex-shrink: 0; }
+#btn-proc:disabled { opacity: .35; cursor: not-allowed; }
+#btn-proc:not(:disabled):hover { background: #333; }
+
+/* PANE 2 */
+#pane2 { display: block; }
+#ctrl { position: fixed; top: 86px; left: 0; width: var(--PNL); height: 86px; padding: .75rem; border-bottom: 1px solid var(--border); background: var(--white); display: flex; flex-direction: column; gap: .5rem; z-index: 100; }
+.crow { display: flex; gap: .38rem; align-items: center; }
+.clbl { font-family: var(--mono); font-size: .63rem; font-weight: 700; color: var(--muted); text-transform: uppercase; min-width: 78px; }
+#n-routes { width: 48px; padding: .24rem .35rem; border: 1px solid var(--border); border-radius: 3px; font-family: var(--mono); font-size: .78rem; font-weight: 700; text-align: center; background: #fafaf8; color: var(--text); outline: none; }
+#n-routes:focus { border-color: var(--text); }
+.bgen { flex: 1; padding: .28rem .55rem; border-radius: 3px; font-family: var(--mono); font-size: .68rem; font-weight: 700; cursor: pointer; border: 1px solid var(--border); background: var(--bg); color: var(--text); text-transform: uppercase; }
+.bgen:hover { background: var(--text); color: var(--bg); border-color: var(--text); }
+#sbar { font-family: var(--mono); font-size: .65rem; color: var(--muted); display: flex; gap: .6rem; }
+#sbar b { color: var(--text); }
+#spin2 { display: none; font-family: var(--mono); font-size: .65rem; color: var(--muted); }
+#spin2.on { display: inline; }
+
+/* ROUTES SCROLL — explicit height so scroll always works */
+#rscroll {
+  position: fixed;
+  top: 172px;
+  left: 0;
+  width: var(--PNL);
+  bottom: 0;
+  overflow-y: auto;
+  padding: .65rem;
+  background: var(--white);
+  z-index: 99;
+}
+#rscroll::-webkit-scrollbar { width: 4px; }
+#rscroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+/* ACCORDION CARDS */
+.rcard { border: 1px solid var(--border); border-radius: 5px; overflow: hidden; background: var(--white); margin-bottom: .5rem; }
+.rcard-hdr {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .55rem .7rem; cursor: pointer; user-select: none; border-left: 4px solid transparent;
+}
+.rcard-hdr:hover { background: #fafaf8; }
+.rcard-hl { display: flex; align-items: center; gap: .45rem; flex: 1; min-width: 0; }
+.rcard-arrow { font-size: .7rem; color: var(--muted); flex-shrink: 0; transition: transform .2s; }
+.rcard.open .rcard-arrow { transform: rotate(0deg); }
+.rcard-info { min-width: 0; }
+.rcard-name { font-family: var(--mono); font-size: .74rem; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rcard-meta { font-family: var(--mono); font-size: .6rem; color: var(--muted); margin-top: .08rem; }
+.rcard-meta b { color: var(--text); }
+.maps-btn { padding: .2rem .5rem; border-radius: 2px; font-family: var(--mono); font-size: .6rem; font-weight: 700; cursor: pointer; background: transparent; text-transform: uppercase; flex-shrink: 0; margin-left: .4rem; }
+.maps-btn:hover { opacity: .7; }
+
+/* Accordion body — hidden by default, shown when .open */
+.rcard-body { display: none; border-top: 1px solid var(--border); }
+.rcard.open .rcard-body { display: block; }
+
+/* Stop items */
+.stop-list { list-style: none; }
+.stop { display: flex; align-items: center; gap: .4rem; padding: .3rem .6rem; border-bottom: 1px solid #f0eeea; cursor: grab; user-select: none; }
+.stop:last-child { border-bottom: none; }
+.stop:hover { background: #fafaf8; }
+.stop.dragging { opacity: .3; }
+.stop.dragover { border-top: 2px solid var(--c1); }
+.stop-drag { color: #d0ccc6; font-size: .7rem; flex-shrink: 0; }
+.stop-num { font-family: var(--mono); font-size: .58rem; font-weight: 700; width: 16px; height: 16px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff; }
+.stop-name { flex: 1; font-size: .73rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stop-dist { font-family: var(--mono); font-size: .58rem; color: var(--muted); white-space: nowrap; flex-shrink: 0; }
+.stop-rm { background: none; border: none; color: #d0ccc6; cursor: pointer; font-size: .75rem; flex-shrink: 0; }
+.stop-rm:hover { color: #ef4444; }
+
+/* empty */
+.empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; color: var(--muted); font-family: var(--mono); font-size: .72rem; text-align: center; padding: 2.5rem 1rem; }
+.empty-ico { font-size: 2rem; }
+
+/* MAP */
+#map-wrap { position: fixed; top: var(--HDR); left: var(--PNL); right: 0; bottom: 0; }
+#map { width: 100%; height: 100%; }
+#legend { position: absolute; bottom: 12px; left: 12px; z-index: 500; background: rgba(255,255,255,.95); border: 1px solid var(--border); border-radius: 4px; padding: .4rem .6rem; font-family: var(--mono); font-size: .63rem; display: none; flex-direction: column; gap: .25rem; }
+.leg-row { display: flex; align-items: center; gap: .35rem; }
+.leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* TOAST */
+#toast { position: fixed; bottom: 14px; right: 14px; z-index: 9999; background: var(--text); color: var(--bg); font-family: var(--mono); font-size: .7rem; padding: .45rem .8rem; border-radius: 3px; pointer-events: none; opacity: 0; transform: translateY(50px); transition: all .2s ease; }
+#toast.on { opacity: 1; transform: translateY(0); }
+
+/* HIDDEN */
+.hide { display: none !important; }
+
+/* PANE 3 */
+#pane3 { position: fixed; top: 86px; left: 0; width: var(--PNL); bottom: 0; overflow-y: auto; background: var(--white); z-index: 99; }
+#pane3-inner { display: flex; flex-direction: column; }
+.ag-row { display: flex; align-items: center; gap: .4rem; padding: .3rem .75rem; border-bottom: 1px solid #f0eeea; font-family: var(--mono); font-size: .7rem; }
+.ag-row:hover { background: #fafaf8; }
+.ag-name { flex: 1; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-addr { flex: 2; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-del { background: none; border: none; color: #d0ccc6; cursor: pointer; font-size: .8rem; flex-shrink: 0; }
+.ag-del:hover { color: #ef4444; }
+.ag-tag { font-size: .58rem; padding: .08rem .3rem; border-radius: 2px; background: #fde68a; color: #92400e; font-weight: 700; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<div id="hdr">
+  <div class="logo">
+    <button class="pill c1" id="pill-c1" onclick="setBase('c1')">C1</button>
+    <button class="pill"    id="pill-c2" onclick="setBase('c2')">C2</button>
+    <span style="opacity:.25;margin:0 .1rem">|</span>
+    ROTEIRIZADOR
+  </div>
+  <div id="hdr-mid">Cole os endereços e gere as rotas</div>
+  <div style="display:flex;gap:.4rem;align-items:center;">
+    <div id="spin-wrap"><span class="spin">⟳</span> calculando...</div>
+    <button class="hbtn hide" id="btn-back"   onclick="goStep(1)">← Voltar</button>
+    <button class="hbtn rd hide" id="btn-reset"  onclick="resetAll()">✕ Resetar</button>
+    <button class="hbtn wh hide" id="btn-export" onclick="exportTxt()">↓ Exportar</button>
+  </div>
+</div>
+
+<!-- PANEL -->
+<div id="panel">
+  <div id="tabs">
+    <button class="tab on" id="tab1" onclick="goStep(1)">① Endereços</button>
+    <button class="tab"    id="tab2" disabled onclick="goStep(2)">② Rotas</button>
+    <button class="tab"    id="tab3" onclick="goStep(3)">⚙ Agências</button>
+  </div>
+
+  <!-- PANE 1 -->
+  <div id="pane1">
+    <div class="lbl">Endereços / Agências <span id="line-count">0 linhas</span></div>
+    <textarea id="addr-input" placeholder="BARAO GERALDO
+VINHEDO
+CAMPINAS
+INDAIATUBA
+SUMARE
+...um por linha"></textarea>
+    <div id="preview"></div>
+    <button id="btn-proc" disabled onclick="processar()">Processar endereços →</button>
+  </div>
+
+  <!-- PANE 2 -->
+  <div id="pane2" class="hide">
+    <div id="ctrl">
+      <div class="crow">
+        <span class="clbl">Nº de rotas</span>
+        <input type="number" id="n-routes" value="3" min="1" max="8">
+        <button class="bgen" onclick="autoRoute()">⊕ Auto região</button>
+        <button class="bgen" onclick="splitRoute()">÷ Dividir N</button>
+      </div>
+      <div class="crow">
+        <div id="sbar"><span><b id="s-pts">0</b> pts</span><span><b id="s-rot">0</b> rotas</span><span><b id="s-km">—</b> km</span></div>
+        <span id="spin2"><span class="spin">⟳</span></span>
+      </div>
+    </div>
+    <div id="rscroll">
+      <div class="empty"><div class="empty-ico">🗺</div><div>Clique em "Auto região" ou "Dividir N"</div></div>
+    </div>
+  </div>
+
+  <!-- PANE 3: AGENCY MANAGER -->
+  <div id="pane3" class="hide">
+    <div id="pane3-inner">
+      <div style="padding:.75rem;border-bottom:1px solid var(--border);background:#fafaf8;">
+        <div style="font-family:var(--mono);font-size:.65rem;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:.5rem;">Adicionar agência personalizada</div>
+        <div style="display:flex;flex-direction:column;gap:.4rem;">
+          <input id="ag-name" type="text" placeholder="Nome exato como aparece no chamado" style="padding:.38rem .55rem;border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:.75rem;background:#fff;color:var(--text);outline:none;">
+          <input id="ag-addr" type="text" placeholder="Endereço completo (Rua, número)" style="padding:.38rem .55rem;border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:.75rem;background:#fff;color:var(--text);outline:none;">
+          <input id="ag-city" type="text" placeholder="Cidade" style="padding:.38rem .55rem;border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:.75rem;background:#fff;color:var(--text);outline:none;">
+          <button onclick="saveNewAgency()" style="padding:.38rem;border-radius:3px;font-family:var(--mono);font-size:.75rem;font-weight:700;cursor:pointer;border:none;background:var(--text);color:var(--bg);">+ Salvar agência</button>
+        </div>
+      </div>
+      <div style="padding:.5rem .75rem;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+        <span style="font-family:var(--mono);font-size:.65rem;color:var(--muted);">AGÊNCIAS PERSONALIZADAS</span>
+        <span style="font-family:var(--mono);font-size:.65rem;color:var(--muted);" id="custom-count">0 salvas</span>
+      </div>
+      <div id="custom-list"></div>
+      <div style="padding:.5rem .75rem;border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;margin-top:.5rem;">
+        <span style="font-family:var(--mono);font-size:.65rem;color:var(--muted);">PLANILHA BASE (<span id="db-count">0</span> agências)</span>
+        <input id="db-search" type="text" placeholder="buscar..." style="padding:.22rem .4rem;border:1px solid var(--border);border-radius:3px;font-family:var(--mono);font-size:.68rem;background:#fafaf8;width:140px;outline:none;" oninput="renderDBList()">
+      </div>
+      <div id="db-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MAP -->
+<div id="map-wrap">
+  <div id="map"></div>
+  <div id="legend"></div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ─── AGENCY DATABASE (from planilha) ───
+const AG_DB={"AGUDOS":{"addr":"AV SEBASTIANA LEITE 405, AGUDOS, SP","city":"AGUDOS"},"ARANDU":{"addr":"PCA DR JOAO COUTINHO DE LIMA 29, ARANDU, SP","city":"ARANDU"},"VL XAVIER-INT-SP":{"addr":"AL PAULISTA 2114 QD 14 LT 262, ARARAQUARA, SP","city":"ARARAQUARA"},"DQ CAXIAS-ARARAQUARA-SP":{"addr":"AV DUQUE DE CAXIAS 515, ARARAQUARA, SP","city":"ARARAQUARA"},"SELECT ARARAQUARA":{"addr":"R SAO BENTO 1091, ARARAQUARA, SP","city":"ARARAQUARA"},"AMBEV AGUDOS-SP":{"addr":"RD MARECHAL RONDON SN K 317, AGUDOS, SP","city":"AGUDOS"},"STA CATARINA-AVARE-SP":{"addr":"R STA CATARINA 1330, AVARE, SP","city":"AVARE"},"CENTRO-AVARE-SP":{"addr":"R RIO GRANDE DO SUL 1473, AVARE, SP","city":"AVARE"},"BARIRI":{"addr":"R SETE DE SETEMBRO 1009, BARIRI, SP","city":"BARIRI"},"CENTRO-BARRA BONITA-SP":{"addr":"R CAMPOS SALLES 159, BARRA BONITA, SP","city":"BARRA BONITA"},"SELECT CENTRO-BAURU":{"addr":"R RIO BRANCO 6 56, BAURU, SP","city":"BAURU"},"DUQUE":{"addr":"AV DUQUE DE CAXIAS 20 05, BAURU, SP","city":"BAURU"},"SELECT BAURU":{"addr":"R RUBENS PAGANI 5 56, BAURU, SP","city":"BAURU"},"PA RIO BRANCO-BAURU-SP":{"addr":"R RIO BRANCO 5 5, BAURU, SP","city":"BAURU"},"ALTOS DA CIDADE":{"addr":"R RIO BRANCO 24 25, BAURU, SP","city":"BAURU"},"USP BAURU FAC ODONT":{"addr":"AL OTAVIO P BRISOLA 9 75, BAURU, SP","city":"BAURU"},"BOA ESPERANCA DO SUL":{"addr":"R PE GUEDES 74, BOA ESPER DO SUL, SP","city":"BOA ESPER DO SUL"},"BOCAINA":{"addr":"R XV DE NOVEMBRO 185, BOCAINA, SP","city":"BOCAINA"},"BOFETE":{"addr":"R MANOEL R MARACAJA 10, BOFETE, SP","city":"BOFETE"},"BORBOREMA":{"addr":"R QUINTINO BOCAIUVA 673, BORBOREMA, SP","city":"BORBOREMA"},"UNESP BOTUCATU":{"addr":"CAMPUS DE BOTUCATU BAIRRO RUBIAO JUNIOR SN, BOTUCATU, SP","city":"BOTUCATU"},"BOTUCATU-CENTRO":{"addr":"R MAJOR MATHEUS 231, BOTUCATU, SP","city":"BOTUCATU"},"SELECT BOTUCATU":{"addr":"R AMANDO DE BARROS 717, BOTUCATU, SP","city":"BOTUCATU"},"BROTAS":{"addr":"AV MARIO PINOTTI 474, BROTAS, SP","city":"BROTAS"},"CAFELANDIA":{"addr":"R DRAUSIO MARCONDES 119, CAFELANDIA, SP","city":"CAFELANDIA"},"CERQUEIRA CESAR":{"addr":"R PROF HILDA CUNHA 91, CERQUEIRA CESAR, SP","city":"CERQUEIRA CESAR"},"CHAVANTES":{"addr":"R SEN MELLO PEIXOTO 222, CHAVANTES, SP","city":"CHAVANTES"},"DOIS CORREGOS":{"addr":"R QUINZE DE NOVEMBRO 710, DOIS CORREGOS, SP","city":"DOIS CORREGOS"},"DOURADO":{"addr":"R XV DE NOVEMBRO 297, DOURADO, SP","city":"DOURADO"},"DUARTINA":{"addr":"AV SAO PAULO 571, DUARTINA, SP","city":"DUARTINA"},"ARARAQUARA":{"addr":"R SAO BENTO 1091, ARARAQUARA, SP","city":"ARARAQUARA"},"UNESP INS QUIMICA":{"addr":"R PROF FRANCISCO DEGNI SN, ARARAQUARA, SP","city":"ARARAQUARA"},"RAIZEN-ARARAQUARA-SP":{"addr":"RD FRANCISCO JOSE ZANIN SN FAZ S JOAQUIM, ARARAQUARA, SP","city":"ARARAQUARA"},"PREF ARARAQUARA-SP":{"addr":"R SAO BENTO 840, ARARAQUARA, SP","city":"ARARAQUARA"},"UNESP ARARAQ FAC OD":{"addr":"R HUMAITA 1680, ARARAQUARA, SP","city":"ARARAQUARA"},"LUPO S/A ARARAQUARA SP":{"addr":"RD WASHINGTON LUIZ SN K 276,5, ARARAQUARA, SP","city":"ARARAQUARA"},"FI-ARARAQUARA":{"addr":"AV LUIZ ALBERTO 572, ARARAQUARA, SP","city":"ARARAQUARA"},"REG ARARAQUARA":{"addr":"R SAO BENTO 1091 1 ANDAR, ARARAQUARA, SP","city":"ARARAQUARA"},"PAY LOJISTA ARARAQUARA":{"addr":"AV LUIS ALBERTO 572 1 ANDAR, ARARAQUARA, SP","city":"ARARAQUARA"},"HEINEKEN-ARARAQUARA-SP":{"addr":"RD WASHINGTON LUIS SN SP 310, ARARAQUARA, SP","city":"ARARAQUARA"},"LATICINIOS BELA VISTA LTDA ARARAQUARA":{"addr":"R BAHIA 100, ARARAQUARA, SP","city":"ARARAQUARA"},"FARTURA":{"addr":"PCA 9 DE JULHO 77, FARTURA, SP","city":"FARTURA"},"GALIA":{"addr":"PCA PEDRO DE TOLEDO 450, GALIA, SP","city":"GALIA"},"CENTRO-GARCA-SP":{"addr":"R CARLOS FERRARI 220, GARCA, SP","city":"GARCA"},"GETULINA":{"addr":"PCA 9 DE JULHO 8 8, GETULINA, SP","city":"GETULINA"},"GUAICARA-INT-SP":{"addr":"R OSWALDO CRUZ 142, GUAICARA, SP","city":"GUAICARA"},"IBATE":{"addr":"R PAULINO CARLOS 875, IBATE, SP","city":"IBATE"},"IBITINGA":{"addr":"AV DR VICTOR MAIDA 810, IBITINGA, SP","city":"IBITINGA"},"IGARACU DO TIETE":{"addr":"R PEREIRA DE REZENDE 700, IGARACU DO TIETE, SP","city":"IGARACU DO TIETE"},"ITABERA":{"addr":"AL FRANCISCO ESTES 182, ITABERA, SP","city":"ITABERA"},"ITAI":{"addr":"AV SANTO ANTONIO 1199, ITAI, SP","city":"ITAI"},"PAB PREFEITURA DE AVARE":{"addr":"R RIO GRANDE DO SUL 1810, AVARE, SP","city":"AVARE"},"CENTRO-ITAPOLIS-SP":{"addr":"AV PRES VALENTIM GENTIL 636, ITAPOLIS, SP","city":"ITAPOLIS"},"ITAPORANGA":{"addr":"R SETE DE SETEMBRO 1350, ITAPORANGA, SP","city":"ITAPORANGA"},"ITAPUI":{"addr":"PCA DA MATRIZ 58, ITAPUI, SP","city":"ITAPUI"},"RAIZEN-BARRA BONITA-SP":{"addr":"FAZENDA PAU D ALHO SN, BARRA BONITA, SP","city":"BARRA BONITA"},"ITARARE":{"addr":"R XV DE NOVEMBRO 525, ITARARE, SP","city":"ITARARE"},"PA AMARAL GURGEL-JAU-SP":{"addr":"R AMARAL GURGEL 387, JAU, SP","city":"JAU"},"SELECT JAU-SP":{"addr":"R LOURENCO PRADO 415, JAU, SP","city":"JAU"},"LENCOIS PAULISTA-SP":{"addr":"R CORONEL JOAQUIM ANSELMO MARTINS 900, LENCOIS PAULISTA, SP","city":"LENCOIS PAULISTA"},"LINS":{"addr":"R OLAVO BILAC 514, LINS, SP","city":"LINS"},"PA LUIZ GAMA-LINS-SP":{"addr":"R LUIZ GAMA 477, LINS, SP","city":"LINS"},"MACATUBA":{"addr":"R J J SOARES MACEDO SN, MACATUBA, SP","city":"MACATUBA"},"AV RIO BRANCO-MARL-INT-SP":{"addr":"AV RIO BRANCO 315 QD 11 LOTE 5, MARILIA, SP","city":"MARILIA"},"MARILIA":{"addr":"AV SAMPAIO VIDAL 871, MARILIA, SP","city":"MARILIA"},"SELECT MARILIA":{"addr":"AV SAMPAIO VIDAL 536, MARILIA, SP","city":"MARILIA"},"AV ESMERALDAS-MARILIA-SP":{"addr":"AV DAS ESMERALDAS 177, MARILIA, SP","city":"MARILIA"},"PA CENTRAL-MARILIA-SP":{"addr":"AV SAMPAIO VIDAL 580, MARILIA, SP","city":"MARILIA"},"SELECT OURINHOS-SP":{"addr":"PCA MELLO PEIXOTO 177, OURINHOS, SP","city":"OURINHOS"},"PARANAPANEMA":{"addr":"PCA DA MATRIZ 79, PARANAPANEMA, SP","city":"PARANAPANEMA"},"PARDINHO":{"addr":"R TEN PEDRO EGIDIO 220, PARDINHO, SP","city":"PARDINHO"},"PEDERNEIRAS":{"addr":"R SIQUEIRA CAMPOS S 137, PEDERNEIRAS, SP","city":"PEDERNEIRAS"},"PIRAJU":{"addr":"PCA ATALIBA LEONEL 225, PIRAJU, SP","city":"PIRAJU"},"PIRAJUI":{"addr":"R CAMPOS SALLES 515, PIRAJUI, SP","city":"PIRAJUI"},"PRESIDENTE ALVES":{"addr":"R NOVE DE JULHO 5, PRESIDENTE ALVES, SP","city":"PRESIDENTE ALVES"},"SAO CARLOS":{"addr":"R EPISCOPAL 1491, SAO CARLOS, SP","city":"SAO CARLOS"},"BAURU":{"addr":"R RIO BRANCO 6 56, BAURU, SP","city":"BAURU"},"FI-BAURU":{"addr":"R RIO BRANCO 5 QDA 5 PISO SUPE, BAURU, SP","city":"BAURU"},"HOSPITAL ESTADUAL DE BAURU":{"addr":"AV ENG LUIS EDMUNDO CARRIJO COUBE 1 100, BAURU, SP","city":"BAURU"},"HOSP BASE BAURU-SP":{"addr":"R MONSENHOR CLARO 88 QD 8, BAURU, SP","city":"BAURU"},"UNESP BAURU":{"addr":"AV ENG LUIS E C COUBE 14 01, BAURU, SP","city":"BAURU"},"UNIP BAURU CHACARA":{"addr":"R LUIZ LEVORATO 2 140, BAURU, SP","city":"BAURU"},"DNR - CALL CENTER BAURU":{"addr":"AV PROFESSOR DURVAL GUEDES DE AZEVEDO 2144 3 ANDAR, BAURU, SP","city":"BAURU"},"NUCLEO PJ BAURU":{"addr":"R RIO BRANCO 555, BAURU, SP","city":"BAURU"},"REG BAURU":{"addr":"R RIO BRANCO 5, BAURU, SP","city":"BAURU"},"SPAL IND BRAS BEBIDAS BAURU-SP":{"addr":"R ENG HORACIO FREDERICO PYLES SN K 01, BAURU, SP","city":"BAURU"},"MANDALITI ADVOGADOS BAURU":{"addr":"AV GETULIO VARGAS 303, BAURU, SP","city":"BAURU"},"INST LAURO S LIMA":{"addr":"RD COMTE JOAO RIBEIRO DE BARROS 225 6 K 225 226, BAURU, SP","city":"BAURU"},"PA IGUATEMI S.CARLOS-SP":{"addr":"PASSEIO DOS FLAMBOYANTS 200 LJ 66, SAO CARLOS, SP","city":"SAO CARLOS"},"SELECT SAO CARLOS":{"addr":"R QUINZE DE NOVEMBRO 1087, SAO CARLOS, SP","city":"SAO CARLOS"},"USP SAO CARLOS":{"addr":"AV DR CARLOS BOTELHO 1465, SAO CARLOS, SP","city":"SAO CARLOS"},"SAO MANUEL":{"addr":"R EPITACIO PESSOA 350, SAO MANUEL, SP","city":"SAO MANUEL"},"SANTA CRUZ RIO PARDO":{"addr":"AV TIRADENTES 265, SC DO RIO PARDO, SP","city":"SC DO RIO PARDO"},"TABATINGA":{"addr":"R EPISCOPAL 1015, TABATINGA, SP","city":"TABATINGA"},"TAGUAI":{"addr":"R JOAO FLORIANO MARTINS 285, TAGUAI, SP","city":"TAGUAI"},"TAQUARITUBA":{"addr":"R DR ATALIBA LEONEL 710, TAQUARITUBA, SP","city":"TAQUARITUBA"},"BOTUCATU":{"addr":"R AMANDO DE BARROS 717, BOTUCATU, SP","city":"BOTUCATU"},"UNESP BOTUC LAGEADO":{"addr":"FAZENDA EXPERIMENTAL LAGEADO SN, BOTUCATU, SP","city":"BOTUCATU"},"PAE STA CASA MISER.BOTUCATU":{"addr":"PCA ISABEL ARRUDA 138 47 C, BOTUCATU, SP","city":"BOTUCATU"},"RAIZEN PARAISO-BROTAS-SP":{"addr":"RD SP 197 FAZENDA PARAISO SN K 7,5 SL 3, BROTAS, SP","city":"BROTAS"},"PREF GAVIAO PEIXOTO":{"addr":"AL ESTEVO 511, GAVIAO PEIXOTO, SP","city":"GAVIAO PEIXOTO"},"RAIZEN-SERRA-IBATE-SP":{"addr":"FAZENDA DA SERRA SN USIN SERRA A 1, IBATE, SP","city":"IBATE"},"RAIZEN-IPAUSSU-SP":{"addr":"RD RAPOSO TAVARES SN K 334 FAZ SROSA, IPAUSSU, SP","city":"IPAUSSU"},"JAU":{"addr":"R LOURENCO PRADO 415, JAU, SP","city":"JAU"},"PAB HOSP.AMARAL CARVALHO JAU":{"addr":"R DONA SILVERIA 150, JAU, SP","city":"JAU"},"STA CASA JAU":{"addr":"R RIACHUELO 1073, JAU, SP","city":"JAU"},"RAIZEN-DIAMANTE-JAU-SP":{"addr":"FAZENDA SAO JOSE SN AREA 1, JAU, SP","city":"JAU"},"FRIGOL S/A-LENCOIS PTA-SP":{"addr":"R DR GABRIEL DE OLIVEIRA ROCHA 704, LENCOIS PAULISTA, SP","city":"LENCOIS PAULISTA"},"LWART LENCOIS PTA-SP":{"addr":"RD JULIANO LORENZETTI ROD MAL RONDON SN SAIDA 304, LENCOIS PAULISTA, SP","city":"LENCOIS PAULISTA"},"PAB FUND.PAUL.TEC.E EDUCACAO":{"addr":"AV NICOLAU ZARVOS 1925 PREDIO, LINS, SP","city":"LINS"},"REG MARILIA":{"addr":"AV SAMPAIO VIDAL 871, MARILIA, SP","city":"MARILIA"},"STA CASA MARILIA":{"addr":"AV VICENTE FERREIRA 828, MARILIA, SP","city":"MARILIA"},"UNIVEM":{"addr":"R HYGINO MUZY FILHO 529, MARILIA, SP","city":"MARILIA"},"UNESP MARILIA":{"addr":"AV PROF HYGINO MUZZI 737, MARILIA, SP","city":"MARILIA"},"DORI ALIMENTOS MARILIA-SP":{"addr":"AV REPUBLICA 5185, MARILIA, SP","city":"MARILIA"},"SPAL IND BRAS DE BEBIDAS - MARILIA-SP":{"addr":"R JOAO VIGGIANI 10, MARILIA, SP","city":"MARILIA"},"UNIMAR MARILIA":{"addr":"R HYGINO MUZZI FILHO 1001, MARILIA, SP","city":"MARILIA"},"PAE DORI ALIMENTOS":{"addr":"AV REPUBLICA 5159, MARILIA, SP","city":"MARILIA"},"HEMOCENTRO MARILIA":{"addr":"R LORIVAL FREIRE 240, MARILIA, SP","city":"MARILIA"},"HC DE MARILIA":{"addr":"AV MONTE CARMELO 800, MARILIA, SP","city":"MARILIA"},"HOSPITAL DA MULHER":{"addr":"AV SAMPAIO VIDAL 42 FUNDOS, MARILIA, SP","city":"MARILIA"},"OURINHOS":{"addr":"PCA MELLO PEIXOTO 177, OURINHOS, SP","city":"OURINHOS"},"IND COM COLCHOES CASTOR LT":{"addr":"AV ARMANDO SILVA 310, OURINHOS, SP","city":"OURINHOS"},"FAC INT DE OURINHOS":{"addr":"RD BR 153 K 339, OURINHOS, SP","city":"OURINHOS"},"DISTRITO HOLAMBRA-PARANAPANEMA-SP":{"addr":"AV DAS ROSAS 47, PARANAPANEMA, SP","city":"PARANAPANEMA"},"PEDERTRACTOR IND COM PECAS TRATORES SERV S/A":{"addr":"AV VICENTINA MARTINS DIARIO 700 ZONA NORTE, PEDERNEIRAS, SP","city":"PEDERNEIRAS"},"NUCLEO PJ SAO CARLOS":{"addr":"R EPISCOPAL 1491, SAO CARLOS, SP","city":"SAO CARLOS"},"SANTA EUDOXIA-PREF S.CARLOS-SP":{"addr":"R CRISTOVAO MARTINELLI 22, SAO CARLOS, SP","city":"SAO CARLOS"},"CIDADE ARACY-PREF S.CARLOS-SP":{"addr":"AV REGIT ARAB 205, SAO CARLOS, SP","city":"SAO CARLOS"},"AW FABER CASTELL-S.CARLOS-SP":{"addr":"R CEL JOSE AUGUSTO DE OLIVEIRA SALLES 1876, SAO CARLOS, SP","city":"SAO CARLOS"},"LATAM LINHAS AER-S CARLOS":{"addr":"RD SP 318 DISTR AGUA VERMELHA SN K 259.5, SAO CARLOS, SP","city":"SAO CARLOS"},"PAE SAO CARLOS SA IND PAPEL":{"addr":"RD SP K 318 236, SAO CARLOS, SP","city":"SAO CARLOS"},"PAE PREF SAO MANUEL-SP":{"addr":"R DR JULIO DE FARIA 518, SAO MANUEL, SP","city":"SAO MANUEL"},"AMERICANA":{"addr":"R SETE DE SETEMBRO 500, AMERICANA, SP","city":"AMERICANA"},"GOODYEAR BRASIL-AMERICANA-SP":{"addr":"RD ANHANGUERA N 128000 K 128, AMERICANA, SP","city":"AMERICANA"},"FI-AMERICANA":{"addr":"AV NS DE FATIMA 311 321, AMERICANA, SP","city":"AMERICANA"},"UMICORE AMERICANA":{"addr":"AV SAO JERONIMO 6000, AMERICANA, SP","city":"AMERICANA"},"GUARDA MUNIC AMERICANA":{"addr":"AV BANDEIRANTES 2100, AMERICANA, SP","city":"AMERICANA"},"CENTRO-AMPARO-SP":{"addr":"PCA MONS JOAO BAPTISTA LISBOA 100, AMPARO, SP","city":"AMPARO"},"PAB FIAT MAGNETTI AMPARO":{"addr":"RD SP 95 K 47 CONJ 2, AMPARO, SP","city":"AMPARO"},"PAB UNIARARAS ARARAS SP":{"addr":"AV DR MAXIMILIANO BARUTO 500 UNIARARAS, ARARAS, SP","city":"ARARAS"},"AGUAI":{"addr":"R MAJOR BRAGA 610, AGUAI, SP","city":"AGUAI"},"AGUAS DE LINDOIA":{"addr":"PCA JOSE LUIZ LEME MACIEL 26, AGUAS DE LINDOIA, SP","city":"AGUAS DE LINDOIA"},"AV CILLOS-INT-SP":{"addr":"AV CILLO 1664, AMERICANA, SP","city":"AMERICANA"},"PA PRES VARGAS-AMERICANA":{"addr":"R PRES VARGAS 323, AMERICANA, SP","city":"AMERICANA"},"SELECT AMERICANA":{"addr":"R SETE DE SETEMBRO 500, AMERICANA, SP","city":"AMERICANA"},"AMERICANA-PCA.DA BIBLIA":{"addr":"AV N SRA DE FATIMA 311 E 321, AMERICANA, SP","city":"AMERICANA"},"SELECT CENTRO AMPARO-SP":{"addr":"PCA MONS JOAO BAPTISTA LISBOA 100, AMPARO, SP","city":"AMPARO"},"CENTRO-BRAGANCA PTA-SP":{"addr":"PCA RAUL LEME 265, BRAGANCA PAULISTA, SP","city":"BRAGANCA PAULISTA"},"USF BRAGANCA PTA":{"addr":"AV SAO FRANCISCO DE ASSIS 218, BRAGANCA PAULISTA, SP","city":"BRAGANCA PAULISTA"},"ARCOR DO BRASIL - BRAGANCA PAULISTA":{"addr":"EST MUNICIPAL FULVIO SALVADOR PAGANI 1301, BRAGANCA PAULISTA, SP","city":"BRAGANCA PAULISTA"},"PRACA BARAO-ARARAS-SP":{"addr":"PCA BARAO DE ARARAS 224, ARARAS, SP","city":"ARARAS"},"ARARAS":{"addr":"PCA BARAO DE ARARAS 361, ARARAS, SP","city":"ARARAS"},"ARTUR NOGUEIRA":{"addr":"AV FERNANDO ARENS 15, ARTUR NOGUEIRA, SP","city":"ARTUR NOGUEIRA"},"C OSORIO-BRAGANCA PTA-SP":{"addr":"R CEL OSORIO 106, BRAGANCA PAULISTA, SP","city":"BRAGANCA PAULISTA"},"SELECT BRAGANCA PAULISTA":{"addr":"PCA RAUL LEME 265, BRAGANCA PAULISTA, SP","city":"BRAGANCA PAULISTA"},"ARMANDO SALES-CAMPINAS-SP":{"addr":"R DR ARMANDO SALES DE OLIVEIRA 100, CAMPINAS, SP","city":"CAMPINAS"},"CAMPINAS-JARDIM GUANABARA":{"addr":"AV BRASIL 800, CAMPINAS, SP","city":"CAMPINAS"},"CAMPINAS-EMPRES.ALPHAVILLE":{"addr":"R CUMARU 197, CAMPINAS, SP","city":"CAMPINAS"},"PA VL NOVA-CAMPINAS-SP":{"addr":"AV FRANCISCO JOSE CAMARGO ANDRADE 933 Q 562 49 L 9, CAMPINAS, SP","city":"CAMPINAS"},"CAMPINAS-SANTO ANTONIO":{"addr":"AV DA SAUDADE 888, CAMPINAS, SP","city":"CAMPINAS"},"CAMPINAS-PUC CAMPINAS":{"addr":"AV PROF ANA MARIA SILV ADADE SN PUC CAMP, CAMPINAS, SP","city":"CAMPINAS"},"SELECT UNICAMP-CAMPINAS":{"addr":"R ROXO MOREIRA SN, CAMPINAS, SP","city":"CAMPINAS"},"PRINC D OESTE-CAMPINAS-SP":{"addr":"AV PRINCESA D OESTE 1227, CAMPINAS, SP","city":"CAMPINAS"},"ANDRADE NEVES-CAMPINAS-SP":{"addr":"AV ANDRADE NEVES 1951, CAMPINAS, SP","city":"CAMPINAS"},"WORK CAFE IGUATEMI-CAMPINAS-SP":{"addr":"AV IGUATEMI 777 LJ 1 2, CAMPINAS, SP","city":"CAMPINAS"},"CAMPINAS":{"addr":"AV FRANCISCO GLICERIO 892, CAMPINAS, SP","city":"CAMPINAS"},"BR DE ITAPURA-CAMPINAS-SP":{"addr":"AV BARAO DE ITAPURA 980 1 ANDAR, CAMPINAS, SP","city":"CAMPINAS"},"SEN SARAIVA-CAMPINAS-SP":{"addr":"AV SEN SARAIVA 563, CAMPINAS, SP","city":"CAMPINAS"},"CAMPOS SALLES-CAMPINAS-SP":{"addr":"AV DR CAMPOS SALES 675, CAMPINAS, SP","city":"CAMPINAS"},"CEL QUIRINO-CAMPINAS-SP":{"addr":"R CEL QUIRINO 666, CAMPINAS, SP","city":"CAMPINAS"},"SELECT CATEDRAL-CAMPINAS":{"addr":"AV FRANCISCO GLICERIO 826 838, CAMPINAS, SP","city":"CAMPINAS"},"BARAO GERALDO":{"addr":"AV SANTA ISABEL 2, CAMPINAS, SP","city":"CAMPINAS"},"PA SHOP PQ.D.PEDRO CAMPINAS-SP":{"addr":"AV GUILHERME CAMPOS 500 LJ 31 32, CAMPINAS, SP","city":"CAMPINAS"},"CAMPINAS-NORTE SUL":{"addr":"AV JOSE DE SOUZA CAMPOS 1092, CAMPINAS, SP","city":"CAMPINAS"},"SELECT BOTAFOGO-CAMPINAS":{"addr":"AV BARAO DE ITAPURA 860, CAMPINAS, SP","city":"CAMPINAS"},"FLAMBOYANT-CAMPINAS-SP":{"addr":"AV JOSE BONIFACIO 707, CAMPINAS, SP","city":"CAMPINAS"},"SOUSAS-INT-SP":{"addr":"AV ANTONIO CARLOS COUTO BARROS 2278 QRT 80 Q 24 LT, CAMPINAS, SP","city":"CAMPINAS"},"JD SANTANA-CAMP-INT-SP":{"addr":"R BENTO DE ARRUDA CAMARGO 1680, CAMPINAS, SP","city":"CAMPINAS"},"SELECT CAMBUI-CAMPINAS":{"addr":"R CEL QUIRINO 925, CAMPINAS, SP","city":"CAMPINAS"},"PA ALBERTO SARMENTO-SP":{"addr":"AV GOV PEDRO DE TOLEDO 1082, CAMPINAS, SP","city":"CAMPINAS"},"NUCLEO PJ MULTINAC CAMPINAS":{"addr":"AV FRANCISCO GLICERIO 892, CAMPINAS, SP","city":"CAMPINAS"},"UNID SELECT SPI CENTRO SUL":{"addr":"AV BARAO DE ITAPURA 980 1 ANDAR, CAMPINAS, SP","city":"CAMPINAS"},"REG SPI CENTRO SUL PABS":{"addr":"AV BARAO DE ITAPURA 980 1 AND PARTE, CAMPINAS, SP","city":"CAMPINAS"},"EMPRESAS SP INTERIOR I":{"addr":"R BARAO DE JAGUARA 919, CAMPINAS, SP","city":"CAMPINAS"},"REG CAMPINAS METROPOLITANA":{"addr":"AV BARAO DE ITAPURA 980 1 ANDAR, CAMPINAS, SP","city":"CAMPINAS"},"REG CAMPINAS":{"addr":"AV FRANCISCO GLICERIO 892, CAMPINAS, SP","city":"CAMPINAS"},"REDE - SP INTERIOR I":{"addr":"AV BARAO DE ITAPURA 980 1 ANDAR, CAMPINAS, SP","city":"CAMPINAS"},"GEVISA CAMPINAS-SP":{"addr":"RD JORNALISTA FRANCISCO AGUIRRE PROENCA SN K 3,8, CAMPINAS, SP","city":"CAMPINAS"},"MEDLEY FARMAC LT-CAMPINAS-SP":{"addr":"R MACEDO COSTA 55, CAMPINAS, SP","city":"CAMPINAS"},"UNIP CAMPINAS II":{"addr":"AV COMENDADOR ENZO FERRARI 280, CAMPINAS, SP","city":"CAMPINAS"},"PAB HOSP.BENEFI.PORTUG.CAMPI":{"addr":"R 11 DE AGOSTO 557, CAMPINAS, SP","city":"CAMPINAS"},"PAB PUC FACULDADE CAMPINAS 1":{"addr":"AV JOHN BOYD DUNLOP SN CAMPUS II, CAMPINAS, SP","city":"CAMPINAS"},"UNICAMP I":{"addr":"CAMPUS UNIVERSITARIO ZEFERINO VAZ SN, CAMPINAS, SP","city":"CAMPINAS"},"NUCLEO PJ CAMPINAS":{"addr":"R BARAO DE JAGUARA 919 1 AND, CAMPINAS, SP","city":"CAMPINAS"},"PONTO COMEX CP":{"addr":"R Barão de Jaguara, 919 2 AND, CAMPINAS, SP","city":"CAMPINAS"},"CAMARA MUNIC CAMPINAS-SP":{"addr":"AV DA SAUDADE 1004, CAMPINAS, SP","city":"CAMPINAS"},"LUXOTTICA CAMPINAS-SP":{"addr":"R HENRIQUE VEIGA 5, CAMPINAS, SP","city":"CAMPINAS"},"PAE GE FANUC CAMPINAS SP":{"addr":"RD SP 101 K 3,8, CAMPINAS, SP","city":"CAMPINAS"},"PAB FUND. CPQD CAMPINAS SP":{"addr":"RD CAMPINAS MOGI MIRIM K 118,5 COND POLIS, CAMPINAS, SP","city":"CAMPINAS"},"PAE PUC CAMPINAS AMBULATORI":{"addr":"AV JOHN BOYD DUNLOP SN, CAMPINAS, SP","city":"CAMPINAS"},"PAB PUC CELSO PIERRO CAMPINA":{"addr":"AV JOHN BOYD DUNLOP SN CAMPUS II, CAMPINAS, SP","city":"CAMPINAS"},"PAE BRINKS CAMPINAS SP":{"addr":"R ANTONIO NUNES DOS SANTOS 40, CAMPINAS, SP","city":"CAMPINAS"},"PROSEGUR BRASIL-UNID CAMPINAS":{"addr":"R ALBERTO DE GRANDE 80, CAMPINAS, SP","city":"CAMPINAS"},"CEASA-CAMPINAS-SP":{"addr":"RD DOM PEDRO I K 140,5 SN, CAMPINAS, SP","city":"CAMPINAS"},"NOVA APARECIDA-SP":{"addr":"R BATISTA RAFFI 715, CAMPINAS, SP","city":"CAMPINAS"},"LOJA OLÉ - CAMPINAS":{"addr":"R Doutor Quirino, 1256, CAMPINAS, SP","city":"CAMPINAS"},"CONCHAL":{"addr":"R XV DE NOVEMBRO 322, CONCHAL, SP","city":"CONCHAL"},"CORDEIROPOLIS":{"addr":"PCA COMEND JAMIL ABRAHAO SAAD 123, CORDEIROPOLIS, SP","city":"CORDEIROPOLIS"},"COSMOPOLIS":{"addr":"AV ESTER 253, COSMOPOLIS, SP","city":"COSMOPOLIS"},"CENTRO-ES DO PINHAL-SP":{"addr":"R JOSE BONIFACIO 128, ESPIRITO SANTO DO PINHAL, SP","city":"ESPIRITO SANTO DO PINHAL"},"CENTRO-ITAPIRA-SP":{"addr":"R COMENDADOR JOAO CINTRA 301, ITAPIRA, SP","city":"ITAPIRA"},"ITIRAPINA":{"addr":"R QUATRO 496, ITIRAPINA, SP","city":"ITIRAPINA"},"C BUENO-JAGUARIUNA-SP":{"addr":"R CANDIDO BUENO 968, JAGUARIUNA, SP","city":"JAGUARIUNA"},"ARMANDO SALLES-LEME-SP":{"addr":"R DR ARMANDO SALLES DE OLIVEIRA 500, LEME, SP","city":"LEME"},"CENTRO-LEME-SP":{"addr":"AV VINTE NOVE DE AGOSTO 436, LEME, SP","city":"LEME"},"LIMEIRA":{"addr":"PCA DR LUCIANO ESTEVES 100, LIMEIRA, SP","city":"LIMEIRA"},"LIMEIRA-CENTRO":{"addr":"R DR TRAJANO BARROS CAMARGO 553, LIMEIRA, SP","city":"LIMEIRA"},"SELECT TIRADENTES-LIMEIRA":{"addr":"R TIRADENTES 1477, LIMEIRA, SP","city":"LIMEIRA"},"LINDOIA":{"addr":"R TEN CEL JOSE R MORAES 71, LINDOIA, SP","city":"LINDOIA"},"SELECT C MIRIM":{"addr":"R SEN JOSE BONIFACIO 8, MOGI MIRIM, SP","city":"MOGI MIRIM"},"CENTRO-M GUACU-SP":{"addr":"R TREZE DE MAIO 14, MOGI-GUACU, SP","city":"MOGI-GUACU"},"TREZE DE MAIO-M GUACU-SP":{"addr":"R 13 DE MAIO 90, MOGI-GUACU, SP","city":"MOGI-GUACU"},"MONTE ALEGRE DO SUL":{"addr":"PCA CEL JOAO FERRAZ 60, MT. ALEGRE SUL, SP","city":"MT. ALEGRE SUL"},"NOVA ODESSA":{"addr":"R HUM DE JANEIRO 147, NOVA ODESSA, SP","city":"NOVA ODESSA"},"KS BAIRRO DA LAGOA":{"addr":"RD ARNALDO JULIO MAUERBERG 4000, NOVA ODESSA, SP","city":"NOVA ODESSA"},"SELECT PAULINIA":{"addr":"AV JOSE PAULINO 970, PAULINIA, SP","city":"PAULINIA"},"JARDIM PLANALTO":{"addr":"RD SP 332 K 132, PAULINIA, SP","city":"PAULINIA"},"PEDRA BELA":{"addr":"R BERNARDINO LIMA PAES 49, PEDRA BELA, SP","city":"PEDRA BELA"},"PEDREIRA":{"addr":"R QUINZE DE NOVEMBRO 843, PEDREIRA, SP","city":"PEDREIRA"},"AVENIDA INDEPENDENCIA":{"addr":"AV INDEPENDENCIA 1111, PIRACICABA, SP","city":"PIRACICABA"},"SELECT CENTRO-PIRACICABA":{"addr":"PCA DA CATEDRAL 966, PIRACICABA, SP","city":"PIRACICABA"},"PIRACICABA":{"addr":"R MORAES BARROS 848, PIRACICABA, SP","city":"PIRACICABA"},"XV NOVEMBRO-PIRACICABA-SP":{"addr":"R 15 DE NOVEMBRO 744, PIRACICABA, SP","city":"PIRACICABA"},"C BOTELHO-PIRACICABA-SP":{"addr":"AV CARLOS BOTELHO 508, PIRACICABA, SP","city":"PIRACICABA"},"RUI BARBOSA-PIRACICABA-SP":{"addr":"AV RUI BARBOSA 614, PIRACICABA, SP","city":"PIRACICABA"},"USP PIRACICABA ESALQ":{"addr":"AV PADUA DIAS SN PEPS ESALQ, PIRACICABA, SP","city":"PIRACICABA"},"USP PIRASSUNUNGA":{"addr":"R DUQUE DE CAXIAS NORTE 225, PIRASSUNUNGA, SP","city":"PIRASSUNUNGA"},"SELECT CENTRO PIRASSUNUNGA-SP":{"addr":"R DUQUE DE CAXIAS 1647, PIRASSUNUNGA, SP","city":"PIRASSUNUNGA"},"PCA OTHONIEL-RIO CLARO-SP":{"addr":"AV 1 337, RIO CLARO, SP","city":"RIO CLARO"},"SELECT RIO CLARO":{"addr":"AV TRES 253, RIO CLARO, SP","city":"RIO CLARO"},"RIO DAS PEDRAS":{"addr":"R PRUDENTE DE MORAIS 85, RIO DAS PEDRAS, SP","city":"RIO DAS PEDRAS"},"PA TIVOLI SHOP S.B.D.OESTE-SP":{"addr":"R DO OSMIO 599, SANTA BARBARA D OESTE, SP","city":"SANTA BARBARA D OESTE"},"STA BARBARA DO OESTE":{"addr":"R D MARGARIDA 533, SANTA BARBARA D OESTE, SP","city":"SANTA BARBARA D OESTE"},"R P.MORAES-S.B.D.OESTE-SP":{"addr":"R PRUDENTE DE MORAES 6, SANTA BARBARA D OESTE, SP","city":"SANTA BARBARA D OESTE"},"SANTA GERTRUDES":{"addr":"AV UM 289, SANTA GERTRUDES, SP","city":"SANTA GERTRUDES"},"CENTRO-SAO PEDRO-SP":{"addr":"R JOAQUIM TEIXEIRA DE TOLEDO 592, SAO PEDRO, SP","city":"SAO PEDRO"},"SERRA NEGRA":{"addr":"R SETE DE SETEMBRO 154, SERRA NEGRA, SP","city":"SERRA NEGRA"},"SOCORRO":{"addr":"R TREZE DE MAIO 96, SOCORRO, SP","city":"SOCORRO"},"FUND ESPIRITA AMERICO BAIRRAL-ITAPIRA-SP":{"addr":"R HORTENCIO PEREIRA DA SILVA 313, ITAPIRA, SP","city":"ITAPIRA"},"SANTA MARIA DA SERRA":{"addr":"R CEL JOSE ANTONIO FROTA 238, STA MARIA DA SERRA, SP","city":"STA MARIA DA SERRA"},"STO ANTONIO DE POSSE":{"addr":"R DR JORGE TIBIRICA 679, STO ANTONIO POSSE, SP","city":"STO ANTONIO POSSE"},"SUMARE-AV.DA AMIZADE":{"addr":"AV AMIZADE 2743, SUMARE, SP","city":"SUMARE"},"SUMARE-3M":{"addr":"RD ANHANGUERA K 110, SUMARE, SP","city":"SUMARE"},"SELECT SUMARE":{"addr":"R DOM BARRETO 800, SUMARE, SP","city":"SUMARE"},"PAB MOTOROLA JAGUARIUNA SP":{"addr":"RD SP 340 K 128,7 A, JAGUARIUNA, SP","city":"JAGUARIUNA"},"PAE ATM MOTOROLA JAGUARIUNA":{"addr":"RD SP 340 K 128,7, JAGUARIUNA, SP","city":"JAGUARIUNA"},"AMBEV JAGUARIUNA-SP":{"addr":"AV ANTARCTICA 1891, JAGUARIUNA, SP","city":"JAGUARIUNA"},"SNELLOG JAGUARIUNA-SP":{"addr":"EST MUN DE JAGUARIUNA 254, JAGUARIUNA, SP","city":"JAGUARIUNA"},"LIMEIRA-RUA TIRADENTES":{"addr":"R TIRADENTES 1477, LIMEIRA, SP","city":"LIMEIRA"},"UNICAMP LIMEIRA ENG":{"addr":"AV CON MANOEL ALVES 129, LIMEIRA, SP","city":"LIMEIRA"},"SANTA CASA DE LIMEIRA":{"addr":"AV ANTONIO OMETO 675, LIMEIRA, SP","city":"LIMEIRA"},"PREF LIMEIRA":{"addr":"R PREF DR ALBERTO FERREIRA 179, LIMEIRA, SP","city":"LIMEIRA"},"PAB EMPRESAS AV MAJ LEVY":{"addr":"AV MAJOR JOSE LEVY SOBRINHO 2700, LIMEIRA, SP","city":"LIMEIRA"},"COMERCIAL BES LIMEIRA":{"addr":"R SANTA CRUZ 787 SL 91, LIMEIRA, SP","city":"LIMEIRA"},"MEDICAL MED COOP ASSIST-LIMEIRA-SP":{"addr":"R DR TRAJANO BARROS CAMARGO 1531, LIMEIRA, SP","city":"LIMEIRA"},"NUCLEO PJ LIMEIRA":{"addr":"PCA LUCIANO ESTEVES 100 2 ANDAR, LIMEIRA, SP","city":"LIMEIRA"},"FI-LIMEIRA":{"addr":"R SANTA CRUZ 787 9 ANDAR SALA 91, LIMEIRA, SP","city":"LIMEIRA"},"PAE MASTRA LIMEIRA SP":{"addr":"AV DR HIPOLITO PINTO RIBEIRO 965, LIMEIRA, SP","city":"LIMEIRA"},"UNIP LIMEIRA-PAE":{"addr":"R MIGUEL GUIDOTTI 405, LIMEIRA, SP","city":"LIMEIRA"},"REG LIMEIRA":{"addr":"PCA DR LUCIANO ESTEVES 100 2 AND, LIMEIRA, SP","city":"LIMEIRA"},"PAB PREF MUNIC DE MOGI GUACU-SP":{"addr":"R HENRIQUE COPPI 200, MOGI GUACU, SP","city":"MOGI GUACU"},"PAE DISTRITO DE MARTINHO PRADO-SP":{"addr":"R HONORIO CORREA 47, MOGI GUACU, SP","city":"MOGI GUACU"},"PAE HOSP DR TABAJARA RAMOS-SP":{"addr":"AV PADRE JAIME 1500, MOGI GUACU, SP","city":"MOGI GUACU"},"REG MOGI GUACU":{"addr":"R TREZE DE MAIO 14, MOGI-GUACU, SP","city":"MOGI-GUACU"},"PAB INT.PAPER DO BRASIL LTDA":{"addr":"RD SP 340 K 171, MOGI-GUACU, SP","city":"MOGI-GUACU"},"FI-MOGI GUACU":{"addr":"R 13 DE MAIO 14 SOBRELOJA, MOGI-GUACU, SP","city":"MOGI-GUACU"},"PAE SANTA CASA MOGI GUACU":{"addr":"R CHICO DE PAULA 608, MOGI-GUACU, SP","city":"MOGI-GUACU"},"HOSP SAO FRANCISCO - MOGIGUACU":{"addr":"R INACIO FRANCO ALVES 561, MOGI-GUACU, SP","city":"MOGI-GUACU"},"CENTRO-M MIRIM-SP":{"addr":"R SEN JOSE BONIFACIO 8, MOGI-MIRIM, SP","city":"MOGI-MIRIM"},"SABO MOGI MIRIM-SP":{"addr":"AV ROMARIO SCHINCARIOL SN, MOGI-MIRIM, SP","city":"MOGI-MIRIM"},"PAE KS BAIRRO DA LAGOA":{"addr":"RD ARNALDO JULIO MAUERBERG 4000, NOVA ODESSA, SP","city":"NOVA ODESSA"},"CENTRO-PAULINIA-SP":{"addr":"AV JOSE PAULINO 970, PAULINIA, SP","city":"PAULINIA"},"BOEHRINGER INGELHEIM HEALTH-PAULINIA-SP":{"addr":"FAZENDA SAO FRANCISCO SN COMP S FRANCISC, PAULINIA, SP","city":"PAULINIA"},"PACO MUNICIPAL PAULINIA-SP":{"addr":"AV PREFEITO JOSE LOZANO ARAUJO 1551, PAULINIA, SP","city":"PAULINIA"},"HOSP MUNICIPAL PAULINIA-SP":{"addr":"R MIGUEL VICENTE CURY 100, PAULINIA, SP","city":"PAULINIA"},"GUARDA MUNICIPAL-PAULINIA-SP":{"addr":"AV DOS EXPEDICIONARI 1432, PAULINIA, SP","city":"PAULINIA"},"PAE PETROLEO BRAS S/A REPLAN":{"addr":"RD SP 332 K 132, PAULINIA, SP","city":"PAULINIA"},"FI-PIRACICABA":{"addr":"PCA DA CATEDRAL 966, PIRACICABA, SP","city":"PIRACICABA"},"NUCLEO PJ PIRACICABA":{"addr":"AV INDEPENDENCIA 1111, PIRACICABA, SP","city":"PIRACICABA"},"REG PIRACICABA":{"addr":"AV INDEPENDENCIA 1111, PIRACICABA, SP","city":"PIRACICABA"},"RAIZEN-CAR-PIRACICABA-SP":{"addr":"R CEZIRA GIOVANONI MORETTI 900, PIRACICABA, SP","city":"PIRACICABA"},"OJI PAPEIS ESPECIAIS":{"addr":"VIA COMEND PEDRO MORGANTI 3393 FABRICA, PIRACICABA, SP","city":"PIRACICABA"},"PAB DIB-MATRIZ PIRACICABA SP":{"addr":"RD RIO CLARO PIRACICABA K 26,3, PIRACICABA, SP","city":"PIRACICABA"},"PAB SANTA CASA DE PIRACICABA":{"addr":"AV INDEPENDENCIA 953, PIRACICABA, SP","city":"PIRACICABA"},"PAB FIAT-CASE PIRACICABA SP":{"addr":"R JOSE COELHO PRATES JUNIOR 199, PIRACICABA, SP","city":"PIRACICABA"},"RAIZEN COSTA PINTO-PIRACICABA-SP":{"addr":"RD HERMINIO PETRIN SN ACES COSTA PIN, PIRACICABA, SP","city":"PIRACICABA"},"FAC ODONT PIRACICABA":{"addr":"AV LIMEIRA 901, PIRACICABA, SP","city":"PIRACICABA"},"PREF PIRACICABA":{"addr":"R ANTONIO C BARBOSA 2233 TERREO, PIRACICABA, SP","city":"PIRACICABA"},"RAIZEN-COSTA PINTO-PIRACICABA-SP":{"addr":"RD HERMINIO PETRIN SN ACES COSTA PIN, PIRACICABA, SP","city":"PIRACICABA"},"MOBIS BRASIL-PIRACICABA-SP":{"addr":"AV HYUNDAI 585, PIRACICABA, SP","city":"PIRACICABA"},"DIB FUNDICAO PIRACICABA-SP":{"addr":"RD FAUSTO SANTOMAURO K 26,3 SN, PIRACICABA, SP","city":"PIRACICABA"},"SANTA CASA PIRACICABA-SP II":{"addr":"AV INDEPENDENCIA 953, PIRACICABA, SP","city":"PIRACICABA"},"UNIMED PIRACICABA SOC COOP SERV MED":{"addr":"AV ANTONIA PAZZINATO STURION 1221, PIRACICABA, SP","city":"PIRACICABA"},"PAE DIB-MECANICA PIRACICABA":{"addr":"AV DR MORATO 350 INDUSTRIA, PIRACICABA, SP","city":"PIRACICABA"},"CENTRO-PIRASSUNUNGA-SP":{"addr":"R DUQUE DE CAXIAS 1647, PIRASSUNUNGA, SP","city":"PIRASSUNUNGA"},"SC PIRASSUNUNGA":{"addr":"AV NEWTON PRADO 1883, PIRASSUNUNGA, SP","city":"PIRASSUNUNGA"},"PAB AFA-ACADEMIA FORCA AEREA":{"addr":"EST DE AGUAI SN AFA, PIRASSUNUNGA, SP","city":"PIRASSUNUNGA"},"PAE AFA-ACADEMIA FORCA AEREA":{"addr":"EST DE AGUAI SN AFA, PIRASSUNUNGA, SP","city":"PIRASSUNUNGA"},"RIO CLARO":{"addr":"AV TRES 253, RIO CLARO, SP","city":"RIO CLARO"},"PAB WHIRLPOOL RIO CLARO SP":{"addr":"AV 80 A 777 FABRICA, RIO CLARO, SP","city":"RIO CLARO"},"PREF RIO CLARO-UNID ADM E SERV":{"addr":"R 8 3300, RIO CLARO, SP","city":"RIO CLARO"},"PREFEITURA MUNICIPAL DE RIO CLARO":{"addr":"R 3 945, RIO CLARO, SP","city":"RIO CLARO"},"UNESP RIO CLARO":{"addr":"AV VINTE QUATRO A 1515, RIO CLARO, SP","city":"RIO CLARO"},"PAE BRASCABOS RIO CLARO FAB1":{"addr":"AV BRASIL 3463 FABRICA, RIO CLARO, SP","city":"RIO CLARO"},"PAE WHIRLPOOL RIO CLARO VEST":{"addr":"AV 80 A 777 FABRICA VEST, RIO CLARO, SP","city":"RIO CLARO"},"RAIZEN-ST HELENA-RIO DAS PEDRAS-SP":{"addr":"RD CORNELIO PIRES SN ACES B CAMPEST, RIO DAS PEDRAS, SP","city":"RIO DAS PEDRAS"},"PREF STA B D'OESTE":{"addr":"R MARGARIDA 533, SANTA BARBARA D OESTE, SP","city":"SANTA BARBARA D OESTE"},"PREF SOCORRO-SP":{"addr":"R JORGE JOSE FARAH 1331, SOCORRO, SP","city":"SOCORRO"},"FI-PASSO FUNDO":{"addr":"R GAL NETTO 205, SOROCABA, SP","city":"SOROCABA"},"SUMARE":{"addr":"R DOM BARRETO 800, SUMARE, SP","city":"SUMARE"},"NUCLEO PJ INDAIATUBA":{"addr":"R DOM BARRETO 800, SUMARE, SP","city":"SUMARE"},"PPG INDL BRASIL-SUMARE-SP":{"addr":"RD ANHANGUERA SP 330 K 106 SN, SUMARE, SP","city":"SUMARE"},"VILLARES METALS S/A-SUMARE-SP":{"addr":"R ALFREDO DUMONT VILLARES 155, SUMARE, SP","city":"SUMARE"},"HOSPITAL EST. SUMARE":{"addr":"AV DA AMIZADE 2400, SUMARE, SP","city":"SUMARE"},"SPAL IND BRAS BEBIDAS SUMARE-SP":{"addr":"R SERGIO POTULSKI 300, SUMARE, SP","city":"SUMARE"},"FI-GRANDE FORTALEZA":{"addr":"R BARAO DE JAGUARA 919, CAMPINAS, SP","city":"CAMPINAS"},"BES CAMPINAS":{"addr":"AV DR CAMPOS SALES 675, CAMPINAS, SP","city":"CAMPINAS"},"PAE AEROPORTO INT VIRACOPOS-SP":{"addr":"RD SANTOS DUMONT K 66 SN PREDIO ADM, CAMPINAS, SP","city":"CAMPINAS"},"JOHN DEERE BRASIL LT-CAMPINAS-SP":{"addr":"R SERGIO FERNANDO BORGES SOARES 1000, CAMPINAS, SP","city":"CAMPINAS"},"SILVA TELES-CAMPINAS-SP":{"addr":"AV CEL SILVA TELES 112 L 21 Q 177, CAMPINAS, SP","city":"CAMPINAS"},"BELGO SID PIRACICABA":{"addr":"AV MARECHAL CASTELO BRANCO 101, PIRACICABA, SP","city":"PIRACICABA"},"MYOUNG SHIN CARROCERIA AUTOM-PIRACICABA-SP":{"addr":"AV COREIA DO SUL 800, PIRACICABA, SP","city":"PIRACICABA"},"PAE PAGUE MENOS PROD ALIMENTICIOS-SP":{"addr":"Rod Luis de Queiroz, SP 304 SN K 142 GLEBAS C 2, SANTA BARBARA D OESTE, SP","city":"SANTA BARBARA D OESTE"},"VILLARES METALS S/A 1-SUMARE-SP":{"addr":"R ALFREDO DUMONT VILLARES 155, SUMARE, SP","city":"SUMARE"},"SELECT ATIBAIA":{"addr":"AL PROF LUCAS NOGUEIRA GARCEZ 2795 LT QUI 2 P A 1, ATIBAIA, SP","city":"ATIBAIA"},"PREF MUN ATIBAIA":{"addr":"R BRUNO SARGIANI 100, ATIBAIA, SP","city":"ATIBAIA"},"CERVEJARIA PETROPOLIS-UN.FABRIL-BOITUVA-SP":{"addr":"EST MUNICIPAL BATISTA FAVORETTI 350 PRED CORPORAT, BOITUVA, SP","city":"BOITUVA"},"CERVEJARIA PETROPOLIS-CORPORATIVO-BOITUVA-SP":{"addr":"EST MUNICIPAL BATISTA FAVORETTI 350 PRED CORPORAT, BOITUVA, SP","city":"BOITUVA"},"ALUMINIO":{"addr":"R MORAES DO REGO 108, ALUMINIO, SP","city":"ALUMINIO"},"REG ITAPETININGA":{"addr":"PCA COMENDADOR EMILIO PEDUTTI 59, BOTUCATU, SP","city":"BOTUCATU"},"ANGATUBA":{"addr":"R TENENTE J M ALBUQUERQUE 224, ANGATUBA, SP","city":"ANGATUBA"},"APIAI":{"addr":"R DR GABRIEL R SANTOS 186, APIAI, SP","city":"APIAI"},"PA ARACARIGUAMA-SP":{"addr":"TR SAO BENEDITO 9, ARACARIGUAMA, SP","city":"ARACARIGUAMA"},"METALURGICA NAKAYONE LTDA":{"addr":"VIA FRANCISCO BOTTI 105, CABREUVA, SP","city":"CABREUVA"},"VL GIGLIO-ATIBAIA-SP":{"addr":"AL PROF LUCAS NOGUEIRA GARCEZ 2795 LT QUIN 2 P A 1, ATIBAIA, SP","city":"ATIBAIA"},"CENTRO-ATIBAIA-SP":{"addr":"R THOME FRANCO 23, ATIBAIA, SP","city":"ATIBAIA"},"BOITUVA":{"addr":"R CEL EUGENIO MOTTA 381, BOITUVA, SP","city":"BOITUVA"},"BOM JESUS DOS PERDOES":{"addr":"R JOAQUIM RODRIGUES DOS SANTOS 579, BOM JESUS PERDOES, SP","city":"BOM JESUS PERDOES"},"PA CABREUVA-SP":{"addr":"AV SAO PAULO 622, CABREUVA, SP","city":"CABREUVA"},"COM MARTINS-INT-SP":{"addr":"PCA COMENDADOR MARTINS 8 SET 1 Q 10 LOT 11, CABREUVA, SP","city":"CABREUVA"},"CAJAMAR":{"addr":"AV VER JOAQUIM PEREIRA BARBOSA 173, CAJAMAR, SP","city":"CAJAMAR"},"RUY RODRIGUEZ-CAMPINAS-SP":{"addr":"AV RUY RODRIGUEZ 714, CAMPINAS, SP","city":"CAMPINAS"},"AMOREIRAS-CAMPINAS-SP":{"addr":"AV DAS AMOREIRAS 2167, CAMPINAS, SP","city":"CAMPINAS"},"OURO VERDE-INT-SP":{"addr":"AV SUACUNA 374 Q 4212 56 LT 15, CAMPINAS, SP","city":"CAMPINAS"},"JOHN BOYD DUNLOP-INT-SP":{"addr":"AV JOHN BOYD DUNLOP 131 AO 185, CAMPINAS, SP","city":"CAMPINAS"},"MERCEDES BENZ-CAMPINAS-SP":{"addr":"AV MERCEDES BENZ 679 PREDIO 4 D 2, CAMPINAS, SP","city":"CAMPINAS"},"PAB BENTELER AUTOMOTIVE":{"addr":"AV MARGINAL SUL 802, CAMPINAS, SP","city":"CAMPINAS"},"MERCEDES BENZ-PREDIO 4I1-CAMPINAS-SP":{"addr":"AV MERCEDES BENZ 679 PREDIO 4 I 1, CAMPINAS, SP","city":"CAMPINAS"},"MERCEDES BENZ-PREDIO 2J2-CAMPINAS-SP":{"addr":"AV MERCEDES BENZ 679 PREDIO 2 J 2, CAMPINAS, SP","city":"CAMPINAS"},"EMDEC-EMPR MUN DESENV CAMPINAS":{"addr":"R DR SALES DE OLIVEIRA 1028, CAMPINAS, SP","city":"CAMPINAS"},"AVENIDA JOAO JORGE":{"addr":"AV JOAO JORGE 431, CAMPINAS, SP","city":"CAMPINAS"},"JD LONDRES-INT-SP":{"addr":"R OSWALDO OSCAR BARTHELSON 1213, CAMPINAS, SP","city":"CAMPINAS"},"PREF MUN CAMPO LIMPO PAULISTA":{"addr":"AV ADHERBAL DA COSTA MOREIRA 255, CAMPO LIMPO PAULISTA, SP","city":"CAMPO LIMPO PAULISTA"},"RAPIDO LUXO CAMPINAS-GARAG CPO LIMPO":{"addr":"AV DOM PEDRO I 1600, CAMPO LIMPO PAULISTA, SP","city":"CAMPO LIMPO PAULISTA"},"AEROP INT VIRACOPOS":{"addr":"AEROP INTERN DE CAMPINAS SN, CAMPINAS, SP","city":"CAMPINAS"},"SELECT CAPAO BONITO":{"addr":"PCA RUI BARBOSA 257, CAPAO BONITO, SP","city":"CAPAO BONITO"},"CENTRO-CAMPO LIMPO PTA-SP":{"addr":"R FRANCISCO MIGUEL 561 579 QD B, CAMPO LIMPO PAULISTA, SP","city":"CAMPO LIMPO PAULISTA"},"CAPAO BONITO":{"addr":"PCA RUI BARBOSA 257, CAPAO BONITO, SP","city":"CAPAO BONITO"},"CAPIVARI":{"addr":"PCA CESARIO MOTA 300, CAPIVARI, SP","city":"CAPIVARI"},"CERQUILHO":{"addr":"R DR SOARES HUNGRIA 14, CERQUILHO, SP","city":"CERQUILHO"},"CONCHAS":{"addr":"R SAO PAULO 239, CONCHAS, SP","city":"CONCHAS"},"PREF CERQUILHO":{"addr":"R ENG URBANO P ARAUJO 28, CERQUILHO, SP","city":"CERQUILHO"},"USINA SANTA MARIA":{"addr":"FAZENDA DE SANTA MARIA SN, CERQUILHO, SP","city":"CERQUILHO"},"GUAPIARA":{"addr":"PCA DUQUE DE CAXIAS 19, GUAPIARA, SP","city":"GUAPIARA"},"ROSOLEM-INT-SP":{"addr":"R ANTONIO FERNANDES LEITE 428 QD 25 LOTE 1, HORTOLANDIA, SP","city":"HORTOLANDIA"},"HORTOLANDIA-INT-SP":{"addr":"R LUIZ CAMILO DE CAMARGO 511 521, HORTOLANDIA, SP","city":"HORTOLANDIA"},"MAGNETI MARELLI":{"addr":"AV DA EMANCIPACAO 801, HORTOLANDIA, SP","city":"HORTOLANDIA"},"IBIUNA":{"addr":"R QUINZE DE NOVEMBRO 288, IBIUNA, SP","city":"IBIUNA"},"INDAIATUBA-AV.FCO.P.LEITE":{"addr":"AV FRANCISCO DE PAULA LEITE 1821, INDAIATUBA, SP","city":"INDAIATUBA"},"INDAIATUBA":{"addr":"PCA PRUDENTE DE MORAES 81, INDAIATUBA, SP","city":"INDAIATUBA"},"MORADA SOL-INDAIATUBA-SP":{"addr":"AV ENG FABIO ROBERTO BARNABE 6124, INDAIATUBA, SP","city":"INDAIATUBA"},"SELECT INDAIATUBA":{"addr":"R ARMANDO SALLES OLIVEIRA 1947 1953 Q 59 L 24 25, INDAIATUBA, SP","city":"INDAIATUBA"},"IPERO":{"addr":"R STO ANTONIO 155, IPERO, SP","city":"IPERO"},"MARECHAL-ITAPETININGA-SP":{"addr":"R VENANCIO AYRES 300 308, ITAPETININGA, SP","city":"ITAPETININGA"},"SELECT ITAPETININGA":{"addr":"R DR JULIO PRESTES 732, ITAPETININGA, SP","city":"ITAPETININGA"},"ITAPEVA":{"addr":"PCA ANCHIETA 103, ITAPEVA, SP","city":"ITAPEVA"},"CENTRO-ITATIBA-SP":{"addr":"R FRANCISCO GLICERIO 395, ITATIBA, SP","city":"ITATIBA"},"ITU-JD.DO ESTADIO":{"addr":"AV TIRADENTES 425 439, ITU, SP","city":"ITU"},"NOVO CENTRO-ITU-SP":{"addr":"AV ITU 400 ANOS 20 LT 3 4 5 QD X, ITU, SP","city":"ITU"},"SELECT ITU":{"addr":"R FLORIANO PEIXOTO 996, ITU, SP","city":"ITU"},"ITUPEVA":{"addr":"AV BRASIL 272, ITUPEVA, SP","city":"ITUPEVA"},"JARINU-SP":{"addr":"R JULIO ZANONI 41, JARINU, SP","city":"JARINU"},"PARQUE DA UVA":{"addr":"AV JUNDIAI 599, JUNDIAI, SP","city":"JUNDIAI"},"VL ARENS-JUNDIAI-SP":{"addr":"R FREI CANECA 66, JUNDIAI, SP","city":"JUNDIAI"},"JUNDIAI-VILA HORTOLANDIA":{"addr":"R ITIRAPINA 1475, JUNDIAI, SP","city":"JUNDIAI"},"JUNDIAI-VILA RAMI":{"addr":"R BOM JESUS DE PIRAPORA 2763, JUNDIAI, SP","city":"JUNDIAI"},"JUNDIAI":{"addr":"R BARAO DE JUNDIAI 884, JUNDIAI, SP","city":"JUNDIAI"},"SELECT CENTRO-JUNDIAI":{"addr":"R RANGEL PESTANA 268, JUNDIAI, SP","city":"JUNDIAI"},"PTE SAO JOAO-JUNDIAI-SP":{"addr":"AV SAO JOAO 503 509, JUNDIAI, SP","city":"JUNDIAI"},"SELECT PARQUE DO COLEGIO":{"addr":"R EDUARDO TOMANIK 533, JUNDIAI, SP","city":"JUNDIAI"},"LARANJAL PAULISTA":{"addr":"R DEZ DE OUTUBRO 21, LARANJAL PAULISTA, SP","city":"LARANJAL PAULISTA"},"MAIRINQUE":{"addr":"AV FRANCISCO ASSIS 109, MAIRINQUE, SP","city":"MAIRINQUE"},"MONTE MOR":{"addr":"AV JANIO QUADROS 1, MONTE MOR, SP","city":"MONTE MOR"},"PIEDADE":{"addr":"R ARAUJO LEITE 172, PIEDADE, SP","city":"PIEDADE"},"PILAR DO SUL":{"addr":"R STO ANTONIO 118, PILAR DO SUL, SP","city":"PILAR DO SUL"},"CENTRO-PIRACAIA-SP":{"addr":"PCA PE LEONARDO 45, PIRACAIA, SP","city":"PIRACAIA"},"PIRAPORA BOM JESUS":{"addr":"PCA DOS PODERES MUNICIPAIS 257, PIRAPORA B JESUS, SP","city":"PIRAPORA B JESUS"},"EMS HORTOLANDIA":{"addr":"RD JORNALISTA FCO AGUIRRE PROENCA SP 101 SN K 8, HORTOLANDIA, SP","city":"HORTOLANDIA"},"PREF HORTOLANDIA ARRECADACAO":{"addr":"R JOSE CLAUDIO ALVES DOS SANTOS 585, HORTOLANDIA, SP","city":"HORTOLANDIA"},"PA UNID MOVEL IBM BRASIL-SP":{"addr":"RD JOR FRANCISCO AGUIRRE PROENCA K 09 SP 101 SN T, HORTOLANDIA, SP","city":"HORTOLANDIA"},"PAB IBM BRASIL-SP":{"addr":"RD JOR FRANCISCO AGUIRRE PROENCA K 09 SP 101 SN T, HORTOLANDIA, SP","city":"HORTOLANDIA"},"CAF BRASIL IND E COM S/A - HORTOLANDIA-SP":{"addr":"R YTAMARAKA SN GLEBA A, HORTOLANDIA, SP","city":"HORTOLANDIA"},"VIACAO BOA VISTA":{"addr":"AV SANTANA 1000, HORTOLANDIA, SP","city":"HORTOLANDIA"},"PORANGABA":{"addr":"R QUATRO DE JUNHO 414, PORANGABA, SP","city":"PORANGABA"},"PORTO FELIZ":{"addr":"PCA DR JOSE SACRAMENTO SILVA 96, PORTO FELIZ, SP","city":"PORTO FELIZ"},"RAFARD":{"addr":"R MAURICIO ALLAIN 251, RAFARD, SP","city":"RAFARD"},"PAE FURNAS CENTR. ELETRICAS":{"addr":"EST VARGEM GRANDE PAULISTA IBIUNA, IBIUNA, SP","city":"IBIUNA"},"CENTRO-SALTO-SP":{"addr":"R NOVE DE JULHO 116 120, SALTO, SP","city":"SALTO"},"VL VITORIA-INDAIATUBA-SP":{"addr":"R ARMANDO SALLES OLIVEIRA 1947 1953 Q 59 L 24 25, INDAIATUBA, SP","city":"INDAIATUBA"},"PREF INDAIATUBA":{"addr":"AV ENGENHEIRO FABIO ROBERTO BARNABE 2800, INDAIATUBA, SP","city":"INDAIATUBA"},"JOHN DEERE INDAIATUBA-SP":{"addr":"AV HORST FREDERICO JOAO HEER 1880, INDAIATUBA, SP","city":"INDAIATUBA"},"LENOVO S/A-INDAIATUBA-SP":{"addr":"EST MUNICIPAL IDT 334 200 CLIN CT LOGIST, INDAIATUBA, SP","city":"INDAIATUBA"},"UNILEVER INDAIATUBA":{"addr":"RD ENG ERMENIO DE OLIVEIRA PENTEADO K 52,7 SN, INDAIATUBA, SP","city":"INDAIATUBA"},"PREFEITURA MUN DE INDAIATUBA":{"addr":"AV ENGENHEIRO ROBERTO BARNABE 2800, INDAIATUBA, SP","city":"INDAIATUBA"},"FUND LEONOR BARROS CAMARGO":{"addr":"AV FRANCISCO DE PAULA LEITE 399, INDAIATUBA, SP","city":"INDAIATUBA"},"SAO MIGUEL ARCANJO":{"addr":"R DOUTOR FERNANDO COSTA 751 GLEBA D, SAO MIGUEL ARCANJO, SP","city":"SAO MIGUEL ARCANJO"},"PAE ARTEFACTO IPERO SP":{"addr":"R FABRICA ESCOLA 11, IPERO, SP","city":"IPERO"},"MONSENHOR-SAO ROQUE-SP":{"addr":"R MONS SILVESTRI MURARI 7, SAO ROQUE, SP","city":"SAO ROQUE"},"PREF MUN SAO ROQUE":{"addr":"R SAO PAULO 966, SAO ROQUE, SP","city":"SAO ROQUE"},"JD DO EDEN-SOROCABA-SP":{"addr":"AV INDEPENDENCIA 5055, SOROCABA, SP","city":"SOROCABA"},"ALEM PONTE-INT-SP":{"addr":"AV SAO PAULO 911, SOROCABA, SP","city":"SOROCABA"},"CENTRO-ITAPETININGA-SP":{"addr":"R DR JULIO PRESTES 732, ITAPETININGA, SP","city":"ITAPETININGA"},"PREF ITAPETININGA":{"addr":"PCA DOS TRES PODERES SN SN, ITAPETININGA, SP","city":"ITAPETININGA"},"PAB 3M-ITAPETININGA SP":{"addr":"RD RAPOSO TAVARES K 171, ITAPETININGA, SP","city":"ITAPETININGA"},"SOROCABA-AV.ITAVUVU":{"addr":"AV ITAVUVU 329, SOROCABA, SP","city":"SOROCABA"},"SELECT C.PEREIRA-SOROCABA":{"addr":"AV COMENDADOR PEREIRA INACIO 332, SOROCABA, SP","city":"SOROCABA"},"GENERAL CARNEIRO":{"addr":"AV GENERAL CARNEIRO 474, SOROCABA, SP","city":"SOROCABA"},"SOROCABA":{"addr":"R QUINZE DE NOVEMBRO 228 246, SOROCABA, SP","city":"SOROCABA"},"SELECT CENTRO-SOROCABA":{"addr":"R QUINZE DE NOVEMBRO 18, SOROCABA, SP","city":"SOROCABA"},"ITAVUVU NORTE-SOROCABA-SP":{"addr":"AV ITAVUVU 2870, SOROCABA, SP","city":"SOROCABA"},"WANEL VILLE-SOROCABA-SP":{"addr":"AV ELIAS MALUF 1910, SOROCABA, SP","city":"SOROCABA"},"STA ROSALIA-SOROCABA-SP":{"addr":"PCA PIO XII 131 ESQ R JOAO SAN, SOROCABA, SP","city":"SOROCABA"},"CEAGESP SOROCABA":{"addr":"R TERENCIO COSTA DIAS 300, SOROCABA, SP","city":"SOROCABA"},"SELECT CAMPOLIM-SOROCABA":{"addr":"AV ANTONIO CARLOS COMITRE 540 TERR MEZ LJ 2, SOROCABA, SP","city":"SOROCABA"},"ITU":{"addr":"R FLORIANO PEIXOTO 996, ITU, SP","city":"ITU"},"PREF MUNIC. CDD NV ITU-SP":{"addr":"R WALDOMIRO CORREA DE CAMARGO 14, ITU, SP","city":"ITU"},"PREF MUNIC. NV CENTRO ITU-SP":{"addr":"AV ITU 400 ANOS 111, ITU, SP","city":"ITU"},"PAE VIACAO ITU SP":{"addr":"AV LAROY STARRETT 571, ITU, SP","city":"ITU"},"AKZO NOBEL QUIMICA":{"addr":"RD AKZO NOBEL 707, ITUPEVA, SP","city":"ITUPEVA"},"TATUI":{"addr":"R XI DE AGOSTO 232, TATUI, SP","city":"TATUI"},"CENTRO-TIETE-SP":{"addr":"PCA ELIAS GARCIA 42, TIETE, SP","city":"TIETE"},"SELECT VALINHOS":{"addr":"R TREZE DE MAIO 78, VALINHOS, SP","city":"VALINHOS"},"AV ESPORTES-VALINHOS-SP":{"addr":"AV DOS ESPORTES 520 530 LADO A, VALINHOS, SP","city":"VALINHOS"},"VARZEA PAULISTA-SP":{"addr":"R FERNAO DIAS PAES LEME 2480, VARZEA PAULISTA, SP","city":"VARZEA PAULISTA"},"VINHEDO":{"addr":"R HUMBERTO PESCARINI 300, VINHEDO, SP","city":"VINHEDO"},"SELECT PORTAL VINHEDO-SP":{"addr":"R DOS PINTASSILGOS 30, VINHEDO, SP","city":"VINHEDO"},"VOTORANTIM":{"addr":"AV 31 DE MARCO 454, VOTORANTIM, SP","city":"VOTORANTIM"},"JUNDIAI-PARQUE DO COLEGIO":{"addr":"R EDUARDO TOMANIK 533, JUNDIAI, SP","city":"JUNDIAI"},"NUCLEO PJ JUNDIAI":{"addr":"R RANGEL PESTANA 268, JUNDIAI, SP","city":"JUNDIAI"},"PAB SOBAM CENTRO MEDICO HOSP":{"addr":"R PITANGUEIRAS 651, JUNDIAI, SP","city":"JUNDIAI"},"FEMSA-JUNDIAI":{"addr":"RD GABRIEL PAULINO BUENO COUTO SN K 65,5, JUNDIAI, SP","city":"JUNDIAI"},"PAB MAGAZINE LUIZA SA":{"addr":"RD DOS BANDEIRANTES K 68, JUNDIAI, SP","city":"JUNDIAI"},"PAB VIACAO JUNDIAIENSE":{"addr":"AV NAVARRO DE ANDRADE 60, JUNDIAI, SP","city":"JUNDIAI"},"ROCA BRASIL - UNIDADE JUNDIAI":{"addr":"AV QUATORZE DE DEZEMBRO 2800, JUNDIAI, SP","city":"JUNDIAI"},"FOXCONN IND COM-JUNDIAI-SP":{"addr":"AV CAMINHO DE GOIAS 100, JUNDIAI, SP","city":"JUNDIAI"},"REG JUNDIAI":{"addr":"R EDUARDO TOMANIK 533 SOBRELOJA, JUNDIAI, SP","city":"JUNDIAI"},"PA JUNDIAI":{"addr":"R RANGEL PESTANA 213, JUNDIAI, SP","city":"JUNDIAI"},"BIGNARDI JUNDIAI-SP":{"addr":"AV ANTONIO PINCINATO 7600, JUNDIAI, SP","city":"JUNDIAI"},"CAVINIC PARTICIPACOES JUNDIAI-SP":{"addr":"AV WILHELM WINTER 350, JUNDIAI, SP","city":"JUNDIAI"},"FI-JUNDIAI":{"addr":"R RANGEL PESTANA 176, JUNDIAI, SP","city":"JUNDIAI"},"SOC PE ANCHIETA ENSINO JUNDIAI-SP":{"addr":"AV DR ADONIRO LADEIRA 94, JUNDIAI, SP","city":"JUNDIAI"},"TAXI AEREO MARILIA - JUNDIAI":{"addr":"AV EMILIO ANTONON LOTES 1 AO 4 SN, JUNDIAI, SP","city":"JUNDIAI"},"AKZO NOBEL EKA CHEMICALS DO BRASIL":{"addr":"RD DOM GABRIEL PAULINO BUENO COUTO SN K 65.2, JUNDIAI, SP","city":"JUNDIAI"},"UNIP JUNDIAI":{"addr":"AV ARMANDO GIASSETTI 577, JUNDIAI, SP","city":"JUNDIAI"},"FEMSA JUNDIAI - PAE":{"addr":"RD DOM GABRIEL SN K 65,5, JUNDIAI, SP","city":"JUNDIAI"},"FAREVA K&G LOUVEIRA-SP":{"addr":"R KARL KIELBLOCK 891, LOUVEIRA, SP","city":"LOUVEIRA"},"PA COM PEREIRA INACIO-SP":{"addr":"AV COMENDADOR PEREIRA INACIO 332, SOROCABA, SP","city":"SOROCABA"},"NUCLEO PJ SOROCABA":{"addr":"R XV DE NOVEMBRO 228 2 AND, SOROCABA, SP","city":"SOROCABA"},"REG SOROCABA":{"addr":"R XV DE NOVEMBRO 228 2 AND, SOROCABA, SP","city":"SOROCABA"},"PAB CNH SOROCABA SP":{"addr":"AV JEROME CASE 1801, SOROCABA, SP","city":"SOROCABA"},"ALTO DA BOA VISTA-SOROCABA-SP":{"addr":"AV ENG CARLOS R MENDES SN, SOROCABA, SP","city":"SOROCABA"},"SOROCABA-CAMPOLIM":{"addr":"AV ANTONIO CARLOS COMITRE 540 TERREO MEZ LJ 2, SOROCABA, SP","city":"SOROCABA"},"UNIMED HOSPITAL-SOROCABA-SP":{"addr":"R ANTONIA DIAS PETRI 135, SOROCABA, SP","city":"SOROCABA"},"UNIP SOROCABA":{"addr":"AV INDEPENDENCIA 412, SOROCABA, SP","city":"SOROCABA"},"PM SOROCABA":{"addr":"R BENTO MANOEL RIBEIRO 96, SOROCABA, SP","city":"SOROCABA"},"ED - SOROCABA":{"addr":"AV ENG CARLOS REINALDO MENDES 3260, SOROCABA, SP","city":"SOROCABA"},"ABB LTDA-SOROCABA-SP":{"addr":"RD SEN JOSE ERMIRIO DE MORAES SN K 011, SOROCABA, SP","city":"SOROCABA"},"PAE HONEYWELL SOROCABA SP":{"addr":"AV LIBERDADE SN, SOROCABA, SP","city":"SOROCABA"},"PAE CNH SOROCABA":{"addr":"AV JEROMI CASE 1801, SOROCABA, SP","city":"SOROCABA"},"FI-SOROCABA":{"addr":"R XV DE NOVEMBRO 228 2 ANDAR, SOROCABA, SP","city":"SOROCABA"},"CENTRO-VALINHOS-SP":{"addr":"R TREZE DE MAIO 78, VALINHOS, SP","city":"VALINHOS"},"UNILEVER VALINHOS":{"addr":"R CAMPOS SALLES 20, VALINHOS, SP","city":"VALINHOS"},"AESA ANHANGUERA EDUCACIONAL S A":{"addr":"AL MARIA TEREZA 2000, VALINHOS, SP","city":"VALINHOS"},"PAB PREF.VALINHOS PACO MUNIC":{"addr":"R ANTONIO CARLOS 301 PREFEITURA, VALINHOS, SP","city":"VALINHOS"},"RAPIDO LUXO CAMPINAS-VALINHOS":{"addr":"R MANOEL DOS SANTOS MARTA 45, VALINHOS, SP","city":"VALINHOS"},"FRANCISCO MORATO-SP":{"addr":"R JOAO MENDES JUNIOR 269, FRANCISCO MORATO, SP","city":"FRANCISCO MORATO"},"FRANCO DA ROCHA":{"addr":"R AZEVEDO SOARES 211, FRANCO DA ROCHA, SP","city":"FRANCO DA ROCHA"},"PREF FRANCISCO MORATO-SP":{"addr":"R PROGRESSO 161, FRANCISCO MORATO, SP","city":"FRANCISCO MORATO"},"MAIRIPORA":{"addr":"R XV DE NOVEMBRO 174, MAIRIPORA, SP","city":"MAIRIPORA"},"PREF MAIRIPORA":{"addr":"AL TIBIRICA 374, MAIRIPORA, SP","city":"MAIRIPORA"},"BIGNARDI CAIEIRAS-SP":{"addr":"RD PRES TANCREDO DE ALMEIDA NEVES SN K 38,5, CAIEIRAS, SP","city":"CAIEIRAS"},"CAIEIRAS-INT-SP":{"addr":"AV PROF CARVALHO PINTO 226 LOT 32 QD C, CAIEIRAS, SP","city":"CAIEIRAS"},"PREF MUNIC VARZEA PAULISTA-SP":{"addr":"R JOAO POVOA 97, VARZEA PAULISTA, SP","city":"VARZEA PAULISTA"},"CONTINENTAL DO BRASIL PROD AUTOMOT LTDA":{"addr":"AV DUQUE DE CAXIAS 2422, VARZEA PAULISTA, SP","city":"VARZEA PAULISTA"},"CONTINENTAL AUTOMOTIVE SYSTEMS ADMINISTRACAO":{"addr":"AV DUQUE DE CAXIAS 2422, VARZEA PAULISTA, SP","city":"VARZEA PAULISTA"},"PORTAL-VINHEDO-SP":{"addr":"R DOS PINTASSILGOS 30, VINHEDO, SP","city":"VINHEDO"},"PREF VINHEDO - CAPELA":{"addr":"AV NOSSA SENHORA DE LOURDES 90 SALA 5, VINHEDO, SP","city":"VINHEDO"},"UNILEVER VINHEDO":{"addr":"AV DAS INDUSTRIAS 315, VINHEDO, SP","city":"VINHEDO"},"PREF VINHEDO":{"addr":"R MONTEIRO DE BARROS 151, VINHEDO, SP","city":"VINHEDO"},"MAGNA VINHEDO-SP":{"addr":"RD ENG MIGUEL MELHADO CAMPOS SN K 79,5, VINHEDO, SP","city":"VINHEDO"},"PAB SELECT IBM HORTOLANDIA":{"addr":"RD JOR FRANCISCO AGUIRRE PROENCA SN K 09 SP 101 T, HORTOLANDIA, SP","city":"HORTOLANDIA"},"GONVARRI HORTOLANDIA":{"addr":"EST MUN CAMPINAS HORTOLANDIA SN, HORTOLANDIA, SP","city":"HORTOLANDIA"},"ESC PE ANCHIETA JUNDIAI-SP":{"addr":"R BOM JESUS DE PIRAPORA 100, JUNDIAI, SP","city":"JUNDIAI"},"PAE ROBERT BOSCH DIR AUTOMOTIVA-SP":{"addr":"AV CONDE ZEPPELLIN 1935 PREDIO II, SOROCABA, SP","city":"SOROCABA"},"BES SP METROPOLITANA":{"addr":"R XV DE NOVEMBRO 228 2 ANDAR, SOROCABA, SP","city":"SOROCABA"},"RAIZEN-GASA-ANDRADINA-SP":{"addr":"RD ACESSO UHE 3 IRMAOS SN K 3,6, ANDRADINA, SP","city":"ANDRADINA"},"JBS S/A-ANDRADINA-SP":{"addr":"AV JOSE BATISTA SOBRINHO SN, ANDRADINA, SP","city":"ANDRADINA"},"STA CASA ANDRADINA":{"addr":"AV GUANABARA 730, ANDRADINA, SP","city":"ANDRADINA"},"ARACATUBA":{"addr":"R OLAVO BILAC 44, ARACATUBA, SP","city":"ARACATUBA"},"NUCLEO PJ  ARACATUBA":{"addr":"R OLAVO BILAC 44, ARACATUBA, SP","city":"ARACATUBA"},"UNESP ARACAT FAC OD":{"addr":"R JOSE BONIFACIO 1193, ARACATUBA, SP","city":"ARACATUBA"},"PREF ARACATUBA":{"addr":"R COELHO NETO 73 PACO MUNICIPAL, ARACATUBA, SP","city":"ARACATUBA"},"ACI ARACATUBA":{"addr":"R VASCO DA GAMA SN, ARACATUBA, SP","city":"ARACATUBA"},"UNIP ARACATUBA":{"addr":"R BAGUACU 1939, ARACATUBA, SP","city":"ARACATUBA"},"REG ARACATUBA":{"addr":"R OLAVO BILAC 44 1 ANDAR, ARACATUBA, SP","city":"ARACATUBA"},"COLOR VISAO ARACATUBA-SP":{"addr":"EST MUN ARACATUBA PRATA SN K 09, ARACATUBA, SP","city":"ARACATUBA"},"RAIZEN-DESTIVALE-ARACATUBA-SP":{"addr":"RD ELIEZER MONTENEGRO MAGALHAES SN K 58, ARACATUBA, SP","city":"ARACATUBA"},"UNESP ASSIS":{"addr":"AV DOM ANTONIO SN, ASSIS, SP","city":"ASSIS"},"RAIZEN-BENALCOOL-BENTO DE ABREU-SP":{"addr":"FAZENDA LAGO AZUL SN ZONA RURAL, BENTO DE ABREU, SP","city":"BENTO DE ABREU"},"PAB PREF BIRIGUI SEC AGUA E ESGOTO-SP":{"addr":"R GUANABARA 256, BIRIGUI, SP","city":"BIRIGUI"},"PAB PREF BIRIGUI PACO-SP":{"addr":"R OSWALDO CRUZ 146, BIRIGUI, SP","city":"BIRIGUI"},"PAE PAMPILI CALC.BIRIGUI":{"addr":"R 21 DE ABRIL 640, BIRIGUI, SP","city":"BIRIGUI"},"PE COM PE CALCADOS LTDA":{"addr":"R MANOEL COTTAS DE AZEVEDO 71 91, BIRIGUI, SP","city":"BIRIGUI"},"PAE SANTA CASA BIRIGUI SP":{"addr":"R DR CARLOS DE CARVALHO ROSA 115 PREDIO, BIRIGUI, SP","city":"BIRIGUI"},"PAE PREF BIRIGUI SEC AGUA E ESGOTO-SP":{"addr":"R GUANABARA 256, BIRIGUI, SP","city":"BIRIGUI"},"PREF CLEMENTINA":{"addr":"R GOIAS 202, CLEMENTINA, SP","city":"CLEMENTINA"},"UNESP ILHA SOLTEIRA":{"addr":"AV BRASIL 56, ILHA SOLTEIRA, SP","city":"ILHA SOLTEIRA"},"ADAMANTINA":{"addr":"R DEP SALLES FILHO 231, ADAMANTINA, SP","city":"ADAMANTINA"},"ALVARES MACHADO":{"addr":"AV DAS AMERICAS 380 384, ALVARES MACHADO, SP","city":"ALVARES MACHADO"},"CENTRO-ANDRADINA-SP":{"addr":"R PAES LEME 1081, ANDRADINA, SP","city":"ANDRADINA"},"MARCILIO DIAS INT-SP":{"addr":"R MARCILIO DIAS 1203 QD 2 LT 01 P, ARACATUBA, SP","city":"ARACATUBA"},"SELECT ARACATUBA":{"addr":"R OLAVO BILAC 44, ARACATUBA, SP","city":"ARACATUBA"},"OSV CRUZ-ARACATUBA-SP":{"addr":"R OSVALDO CRUZ 35, ARACATUBA, SP","city":"ARACATUBA"},"CENTRO-ASSIS-SP":{"addr":"AV RUI BARBOSA 151, ASSIS, SP","city":"ASSIS"},"AVANHANDAVA-INT-SP":{"addr":"R BOA VISTA 743, AVANHANDAVA, SP","city":"AVANHANDAVA"},"CENTRO-BASTOS-SP":{"addr":"R PRESIDENTE VARGAS 578, BASTOS, SP","city":"BASTOS"},"PA BR RIO BCO-BIRIGUI-SP":{"addr":"R BARAO DO RIO BRANCO 671, BIRIGUI, SP","city":"BIRIGUI"},"CENTRO-BIRIGUI-SP":{"addr":"PCA DR GAMA 88, BIRIGUI, SP","city":"BIRIGUI"},"JD SILVARES-BIRIGUI-SP":{"addr":"AV YOUSSEF ISMAIL MANSOUR SN QD M 3 LT 1 32 33, BIRIGUI, SP","city":"BIRIGUI"},"BORA":{"addr":"PCA STO ANTONIO 47, BORA, SP","city":"BORA"},"CAIABU":{"addr":"R MOACIR MARANGONI 222, CAIABU, SP","city":"CAIABU"},"CAIUA":{"addr":"R MANOEL MARIANO SOUZA 200, CAIUA, SP","city":"CAIUA"},"CANDIDO MOTA":{"addr":"R CEL VALENCIO CARNEIRO 333, CANDIDO MOTA, SP","city":"CANDIDO MOTA"},"CRUZALIA":{"addr":"AV LUIZ ZANDONADI 50, CRUZALIA, SP","city":"CRUZALIA"},"CENTRO-DRACENA-SP":{"addr":"PCA ARTHUR PAGNOZZI 59, DRACENA, SP","city":"DRACENA"},"PA ECHAPORA-SP":{"addr":"R BRASIL 54 0056, ECHAPORA, SP","city":"ECHAPORA"},"FLORINEA":{"addr":"AV BRASIL 618, FLORINEA, SP","city":"FLORINEA"},"GABRIEL MONTEIRO":{"addr":"AV NOVA OLIMPIA 278, GABRIEL MONTEIRO, SP","city":"GABRIEL MONTEIRO"},"GUARACAI":{"addr":"R D ALCIDES C DE SOUZA 866, GUARACAI, SP","city":"GUARACAI"},"CENTRO-GUARARAPES-SP":{"addr":"PCA N SRA DA CONCEICAO 128, GUARARAPES, SP","city":"GUARARAPES"},"ILHA SOLTEIRA":{"addr":"AL BAHIA 15, ILHA SOLTEIRA, SP","city":"ILHA SOLTEIRA"},"IRAPURU":{"addr":"AV NOVE DE JULHO 455, IRAPURU, SP","city":"IRAPURU"},"JUNQUEIROPOLIS":{"addr":"R RUI BARBOSA 713, JUNQUEIROPOLIS, SP","city":"JUNQUEIROPOLIS"},"LUCELIA":{"addr":"AV INTERNACIONAL 1886, LUCELIA, SP","city":"LUCELIA"},"MIRANTE PARANAPANEMA":{"addr":"R GETULIO VARGAS 663, M PARANAPANEMA, SP","city":"M PARANAPANEMA"},"MARACAI":{"addr":"R SAO PAULO 450, MARACAI, SP","city":"MARACAI"},"MARTINOPOLIS":{"addr":"R JOSE MARIA SANCHES 570, MARTINOPOLIS, SP","city":"MARTINOPOLIS"},"MIRANDOPOLIS":{"addr":"R DR EDGAR RAIMUNDO COSTA 108, MIRANDOPOLIS, SP","city":"MIRANDOPOLIS"},"RAIZEN PARAGUACU-MARACAI-SP":{"addr":"FAZENDA SANTA AMELIA SN, MARACAI, SP","city":"MARACAI"},"MONTE CASTELO":{"addr":"R DEP AMARAL FURLAN 610, MONTE CASTELO, SP","city":"MONTE CASTELO"},"MURUTINGA DO SUL":{"addr":"AV PREFEITO ROMEU CESTARI 159, MURUTINGA DO SUL, SP","city":"MURUTINGA DO SUL"},"NARANDIBA":{"addr":"R VER ANTONIO CAMILO NOGUEIRA 437, NARANDIBA, SP","city":"NARANDIBA"},"OSCAR BRESSANE":{"addr":"R VIRGINIO GIROTTO 222, OSCAR BRESSANE, SP","city":"OSCAR BRESSANE"},"OSVALDO CRUZ":{"addr":"AV BRASIL 361, OSVALDO CRUZ, SP","city":"OSVALDO CRUZ"},"PACAEMBU":{"addr":"AV VER JOSE G DUDA 968, PACAEMBU, SP","city":"PACAEMBU"},"PALMITAL":{"addr":"PCA CEL JOSE MACHADO 11, PALMITAL, SP","city":"PALMITAL"},"PANORAMA":{"addr":"R QUINTINO MAUDONNET 835, PANORAMA, SP","city":"PANORAMA"},"PARAGUACU PAULISTA":{"addr":"R SETE DE SETEMBRO 599, PARAGUACU PAULISTA, SP","city":"PARAGUACU PAULISTA"},"RAIZEN-BARRA MUNDIAL-MIRANDOPOLIS-SP":{"addr":"EST MIRANDOPOLIS PACAEMBU SN ZONA RURAL, MIRANDOPOLIS, SP","city":"MIRANDOPOLIS"},"PARAPUA":{"addr":"AV SAO PAULO 1123, PARAPUA, SP","city":"PARAPUA"},"PAULICEIA":{"addr":"AV PAULISTA 2006, PAULICEIA, SP","city":"PAULICEIA"},"CENTRO-PENAPOLIS-SP":{"addr":"AV LUIZ OSORIO 595, PENAPOLIS, SP","city":"PENAPOLIS"},"PEREIRA BARRETO":{"addr":"R COZO TAGUCHI 1443, PEREIRA BARRETO, SP","city":"PEREIRA BARRETO"},"PIRAPOZINHO":{"addr":"PCA MANUEL MARQUES SILVA 111, PIRAPOZINHO, SP","city":"PIRAPOZINHO"},"POMPEIA":{"addr":"R JOSE DE AGUIAR MORAES 308, POMPEIA, SP","city":"POMPEIA"},"PRESIDENTE BERNARDES":{"addr":"R CEL MANOEL R BARBOSA 720, PRES BERNARDES, SP","city":"PRES BERNARDES"},"PRESIDENTE EPITACIO":{"addr":"R FORTALEZA 7 08, PRES. EPITACIO, SP","city":"PRES. EPITACIO"},"PRESIDENTE VENCESLAU":{"addr":"R NEWTON PRADO 85, PRES. VENCESLAU, SP","city":"PRES. VENCESLAU"},"PA BARAO-P.PRUDENTE-SP":{"addr":"R BARAO DO RIO BRANCO 185, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"PQ DO POVO-P.PRUDENTE-SP":{"addr":"AV CEL JOSE SOARES MARCONDES 2910, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"PA CORONEL MARCONDES-SP":{"addr":"AV CEL JOSE S MARCONDES 1642, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"SELECT PRESIDENTE PRUDENTE":{"addr":"R TEN NICOLAU MAFFEI 258, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"SELECT PRES PRUDENTE":{"addr":"AV WASHINGTON LUIZ 210, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"PRES.PRUDENTE-UNOESTE":{"addr":"R JOSE BONGIOVANI 691, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"PA BOSQUE-INT-SP":{"addr":"R SIQUEIRA CAMPOS 75, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"PROMISSAO":{"addr":"R PEDRO DE TOLEDO 703, PROMISSAO, SP","city":"PROMISSAO"},"QUATA":{"addr":"AV RUI BARBOSA 548, QUATA, SP","city":"QUATA"},"PM NOVA INDEPENDENCIA":{"addr":"R SANTA MARIA 500, NOVA INDEPENDENCIA, SP","city":"NOVA INDEPENDENCIA"},"QUEIROS":{"addr":"AV RANGEL PESTANA SN, QUEIROS, SP","city":"QUEIROS"},"RANCHARIA":{"addr":"AV PEDRO DE TOLEDO 360, RANCHARIA, SP","city":"RANCHARIA"},"REGENTE FEIJO":{"addr":"AV JOSE BONIFACIO 377, REGENTE FEIJO, SP","city":"REGENTE FEIJO"},"ROSANA/POR PRIMAVERA":{"addr":"R HUMAITA 34, ROSANA, SP","city":"ROSANA"},"SANTO ANASTACIO":{"addr":"AV JOSE BONIFACIO 334, SANTO ANASTACIO, SP","city":"SANTO ANASTACIO"},"SANTO EXPEDITO":{"addr":"AV BARAO DO RIO BRANCO 363, SANTO EXPEDITO, SP","city":"SANTO EXPEDITO"},"SANTOPOLIS DO AGUAPEI":{"addr":"AV ANTONIO FCO SANTOS JR 503, SANTOPOLIS AGUAPEI, SP","city":"SANTOPOLIS AGUAPEI"},"TACIBA":{"addr":"R MOISES CALIXTO 435, TACIBA, SP","city":"TACIBA"},"TARABAI":{"addr":"AV MAL CASTELO BRANCO 2260, TARABAI, SP","city":"TARABAI"},"TEODORO SAMPAIO":{"addr":"AV MANOEL GUIRADO SEGURA 902 QD 38 LOT 15, TEODORO SAMPAIO, SP","city":"TEODORO SAMPAIO"},"CENTRO-TUPA-SP":{"addr":"AV TAMOIOS 753, TUPA, SP","city":"TUPA"},"TUPI PAULISTA":{"addr":"AV NOVE DE JULHO 441, TUPI PAULISTA, SP","city":"TUPI PAULISTA"},"VALPARAISO":{"addr":"AV NOVE DE JULHO 580, VALPARAISO, SP","city":"VALPARAISO"},"GRANOL OSVALDO CRUZ-SP":{"addr":"EST ROBERTO ROMANINI SN, OSVALDO CRUZ, SP","city":"OSVALDO CRUZ"},"PREF PEDRINHAS PTA":{"addr":"AV ITALIA 109, PEDRINHAS PAULISTA, SP","city":"PEDRINHAS PAULISTA"},"PREF PENAPOLIS":{"addr":"AV MARGINAL MARIA CHICA 1400, PENAPOLIS, SP","city":"PENAPOLIS"},"MIDORI AUTO LEATHER BRASIL LTDA-SP":{"addr":"AV ANTONIO VERONESE 1007, PENAPOLIS, SP","city":"PENAPOLIS"},"PRESIDENTE PRUDENTE":{"addr":"R TEN NICOLAU MAFFEI 258, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"NUCLEO PJ PRESIDENTE PRUDENTE":{"addr":"R BARAO DO RIO BRANCO 185, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"REG PRESIDENTE PRUDENTE":{"addr":"R BARAO DO RIO BRANCO 185, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"COHAB PRES PRUDENTE":{"addr":"AV ANA JACINTA 2019, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"PAB UNOESTE CAMPUS II":{"addr":"RD RAPOSO TAVARES K 572, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"UNESP PRES PRUDENTE":{"addr":"R ROBERTO SIMONSEN 305, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"HOSP ANA JACINTA":{"addr":"AV OSVALDO DA SILVA 725, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"PREF P PRUDENTE":{"addr":"AV CEL MARCONDES 1200 SUB SOLO, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"NUCLEO REGIONAL DE NUMERARIO-PRES PRUDENTE":{"addr":"R TEN NICOLAU MAFFEI 258, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"FI-PRESIDENTE PRUDENTE":{"addr":"BARAO DO RIO BRANCO 185 PISO SUPERIOR, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"TOLEDO":{"addr":"PCA RAUL FURQUIM 9, PRESIDENTE PRUDENTE, SP","city":"PRESIDENTE PRUDENTE"},"PREF ROSANA":{"addr":"AV JOSE LAURINDO 1540 A, ROSANA, SP","city":"ROSANA"},"PREFEITURA SANTO ANTONIO DO ARACANGUA":{"addr":"R PIO PRADO 277, S ANTONIO ARACANGUA, SP","city":"S ANTONIO ARACANGUA"},"RAIZEN-TARUMA-SP":{"addr":"FAZENDA NOVA AMERICA SN, TARUMA, SP","city":"TARUMA"},"PREF MUN TUPA PACO MUNICIPAL":{"addr":"PCA DA BANDEIRA 800, TUPA, SP","city":"TUPA"},"PREF MUN TUPA ALMOXARIFADO":{"addr":"R NHAMBIQUARAS 1555, TUPA, SP","city":"TUPA"},"RAIZEN-UNIVALEM-VALPARAISO-SP":{"addr":"RD DR PLACIDO ROCHA SP 541 SN K 39 600 M, VALPARAISO, SP","city":"VALPARAISO"},"CPM AMERICO BRASILIENSE-SP":{"addr":"AL ALDO LUPO 1200, AMERICO BRASILIENSE, SP","city":"AMERICO BRASILIENSE"},"PREF BEBEDOURO":{"addr":"PCA JOSE STAMATO SOBRINHO SN, BEBEDOURO, SP","city":"BEBEDOURO"},"GRANOL BEBEDOURO-SP":{"addr":"AV QUITO STAMATO SN, BEBEDOURO, SP","city":"BEBEDOURO"},"OURO FINO CRAVINHOS-SP":{"addr":"RD ANHANGUERA K 298 SN, CRAVINHOS, SP","city":"CRAVINHOS"},"PREF DESCALVADO":{"addr":"R JOSE QUIRINO RIBEIRO 55, DESCALVADO, SP","city":"DESCALVADO"},"FRANCA":{"addr":"R MONSENHOR ROSA 1659, FRANCA, SP","city":"FRANCA"},"REG FRANCA":{"addr":"R MONSENHOR ROSA 1659, FRANCA, SP","city":"FRANCA"},"UNESP FRANCA":{"addr":"AV EUFRASIA MONTEIRO PETRAGLIA 900, FRANCA, SP","city":"FRANCA"},"HOSPITAL REGIONAL DE FRANCA":{"addr":"R DOUTOR FERNANDO FALLEIROS LIMA 2233, FRANCA, SP","city":"FRANCA"},"MAGAZINE LUIZA S/A":{"addr":"R ARNULFO DE LIMA 2385, FRANCA, SP","city":"FRANCA"},"PAB PREFEITURA DE FRANCA":{"addr":"R FREDERICO MOURA 1517 PACO MUNIC, FRANCA, SP","city":"FRANCA"},"MAGAZINE LUIZA-FRANCA-SP":{"addr":"R ARNULPHO DE LIMA 2385, FRANCA, SP","city":"FRANCA"},"EMPRESA SAO JOSE":{"addr":"AV DR WILLIAM AZZUZ 480, FRANCA, SP","city":"FRANCA"},"PAE CURTUME DELLA TORRE":{"addr":"AV ALBERTO PULICANO 3333, FRANCA, SP","city":"FRANCA"},"PAE F.A.C.E.F - FRANCA SP":{"addr":"AV MAJOR NICACIO 2433 FACEF, FRANCA, SP","city":"FRANCA"},"TEREOS MANDU-GUAIRA-PAE-SP":{"addr":"RD SP 345 FAZ MANDU SN K 146, GUAIRA, SP","city":"GUAIRA"},"RAIZEN-BONFIM-GUARIBA-SP":{"addr":"RD BRIG FARIA LIMA SN K 322, GUARIBA, SP","city":"GUARIBA"},"PREF GUATAPARA":{"addr":"R HERMINIO FELIX BONFIM 108, GUATAPARA, SP","city":"GUATAPARA"},"RAIZEN-JUNQUEIRA-IGARAPAVA-SP":{"addr":"ESTACAO CORONEL QUITO SN AREA 1 USIN JUN, IGARAPAVA, SP","city":"IGARAPAVA"},"PA IPUA-SP":{"addr":"AV DONA TEREZA 757, IPUA, SP","city":"IPUA"},"PREF JABOTICABAL":{"addr":"ESPLANADA DO LAGO CARLOS RODRIGUES SERRA SN, JABOTICABAL, SP","city":"JABOTICABAL"},"UNESP JABOTICABAL":{"addr":"RD PROF PAULO DONATO CASTELANI K 5, JABOTICABAL, SP","city":"JABOTICABAL"},"INTERNATIONAL PAPER BRASIL-L.ANTONIO-SP":{"addr":"RD SP 255 SN K 41.2, LUIS ANTONIO, SP","city":"LUIS ANTONIO"},"INTERNATIONAL PAPER - FABR 2":{"addr":"RD SP 255 K 41.240, LUIS ANTONIO, SP","city":"LUIS ANTONIO"},"INTERNATIONAL PAPER - FABR 1":{"addr":"RD SP 255 K 41.240, LUIS ANTONIO, SP","city":"LUIS ANTONIO"},"Z RURAL-LUIS ANTONIO-SP":{"addr":"R EXPEDICIONARI PAULISTA 473, LUIS ANTONIO, SP","city":"LUIS ANTONIO"},"PAB MARCHESAN MAQ AGRICOLAS-SP":{"addr":"AV MARCHESAN 179, MATAO, SP","city":"MATAO"},"PREF SUB SAO L TURVO":{"addr":"R DOMINGOS PRIMIANO 701, MATAO, SP","city":"MATAO"},"HBA UNID 2 MONTE ALTO-SP":{"addr":"AV DR JOSE DE PAULA EDUARDO 1250, MONTE ALTO, SP","city":"MONTE ALTO"},"HBA MATRIZ MONTE ALTO-SP":{"addr":"R DR CARLOS KIELANDER 2, MONTE ALTO, SP","city":"MONTE ALTO"},"HBA UNID 1 MONTE ALTO-SP":{"addr":"R DAS PALMAS 84, MONTE ALTO, SP","city":"MONTE ALTO"},"PREF MOTUCA":{"addr":"R ADOLFO T DE AQUINO 430, MOTUCA, SP","city":"MOTUCA"},"ALTINOPOLIS":{"addr":"R CEL HONORIO PALMA 408, ALTINOPOLIS, SP","city":"ALTINOPOLIS"},"AMERICO BRASILIENSE":{"addr":"AV JOAQUIM A DA COSTA 275, AMERICO BRASILIENSE, SP","city":"AMERICO BRASILIENSE"},"ARAMINA":{"addr":"R JUVENAL CAMPOS 981, ARAMINA, SP","city":"ARAMINA"},"BARRINHA":{"addr":"R AMELIA Z BOMBONATO 110, BARRINHA, SP","city":"BARRINHA"},"CENTRO-BATATAIS-SP":{"addr":"PCA CONEGO JOAQUIM ALVES 80, BATATAIS, SP","city":"BATATAIS"},"CENTRO-BEBEDOURO-SP":{"addr":"R SAO JOAO 462, BEBEDOURO, SP","city":"BEBEDOURO"},"BRODOWSKI":{"addr":"R FLORIANO PEIXOTO 906, BRODOWSKI, SP","city":"BRODOWSKI"},"BURITIZAL":{"addr":"R CEL FRANCISCO MARTINS 180, BURITIZAL, SP","city":"BURITIZAL"},"CACONDE":{"addr":"R DR PEDRO DE TOLEDO 197, CACONDE, SP","city":"CACONDE"},"CAJURU":{"addr":"R SAMPAIO MOREIRA 1000, CAJURU, SP","city":"CAJURU"},"CENTRO-CASA BRANCA-SP":{"addr":"R CEL JOSE JULIO 918, CASA BRANCA, SP","city":"CASA BRANCA"},"CRAVINHOS":{"addr":"R XV DE NOVEMBRO 239, CRAVINHOS, SP","city":"CRAVINHOS"},"CRISTAIS PAULISTA":{"addr":"AV ANTONIO PRADO 2633, CRISTAIS PAULIST, SP","city":"CRISTAIS PAULIST"},"DESCALVADO":{"addr":"R BEZERRA PAES 309, DESCALVADO, SP","city":"DESCALVADO"},"PA ESTACAO-FRANCA-SP":{"addr":"R VOL DA FRANCA 490, FRANCA, SP","city":"FRANCA"},"AV BRASIL-INT-SP":{"addr":"AV BRASIL 1400 LT 7 8 9 10 Q 34, FRANCA, SP","city":"FRANCA"},"SELECT FRANCA":{"addr":"R MONSENHOR ROSA 1659, FRANCA, SP","city":"FRANCA"},"CIDADE NOVA":{"addr":"AV PRESIDENTE VARGAS 678, FRANCA, SP","city":"FRANCA"},"GUARA":{"addr":"PCA NOVE DE JULHO 168, GUARA, SP","city":"GUARA"},"CENTRO-GUARIBA-SP":{"addr":"R NOVE DE JULHO 638, GUARIBA, SP","city":"GUARIBA"},"CENTRO-IGARAPAVA-SP":{"addr":"PCA RUI BARBOSA 14, IGARAPAVA, SP","city":"IGARAPAVA"},"ITOBI":{"addr":"R SETE DE SETEMBRO 704, ITOBI, SP","city":"ITOBI"},"CENTRO-ITUVERAVA-SP":{"addr":"AV DR SOARES DE OLIVEIRA 57, ITUVERAVA, SP","city":"ITUVERAVA"},"CENTRO-JABOTICABAL-SP":{"addr":"PCA NOVE DE JULHO 145, JABOTICABAL, SP","city":"JABOTICABAL"},"CENTRO-JARDINOPOLIS-SP":{"addr":"R CEL JOSE TEODORO 251, JARDINOPOLIS, SP","city":"JARDINOPOLIS"},"CENTRO-LUIS ANTONIO-SP":{"addr":"R EXPEDICIONARI PAULISTA 473, LUIS ANTONIO, SP","city":"LUIS ANTONIO"},"CENTRO-MATAO-SP":{"addr":"R RUI BARBOSA 905, MATAO, SP","city":"MATAO"},"MIGUELOPOLIS":{"addr":"AV LEOPOLDO C DE OLIVEIRA 1236, MIGUELOPOLIS, SP","city":"MIGUELOPOLIS"},"CENTRO-MOCOCA-SP":{"addr":"PCA MAJOR JOSE PEDRO 17, MOCOCA, SP","city":"MOCOCA"},"CENTRO-MONTE ALTO-SP":{"addr":"R NHONHO DO LIVRAMENTO 1772, MONTE ALTO, SP","city":"MONTE ALTO"},"MORRO AGUDO":{"addr":"R INACIO FRANCO 1120, MORRO AGUDO, SP","city":"MORRO AGUDO"},"CENTRO-ORLANDIA-SP":{"addr":"AV TRES 548, ORLANDIA, SP","city":"ORLANDIA"},"PATROCINIO PAULISTA":{"addr":"PCA CEL ESTEVAM MARCOLINO 300, PATROCINIO PAULISTA, SP","city":"PATROCINIO PAULISTA"},"PEDREGULHO":{"addr":"PCA PADRE LUIZ SAVIO 105, PEDREGULHO, SP","city":"PEDREGULHO"},"PIRANGI":{"addr":"R DR RODRIGUES ALVES 886, PIRANGI, SP","city":"PIRANGI"},"PA PITANGUEIRAS-SP":{"addr":"R SANTA CATARINA 247 251, PITANGUEIRAS, SP","city":"PITANGUEIRAS"},"PONTAL":{"addr":"R GUILHERME SILVA 183, PONTAL, SP","city":"PONTAL"},"PORTO FERREIRA":{"addr":"R SAO SEBASTIAO 335, PORTO FERREIRA, SP","city":"PORTO FERREIRA"},"RESTINGA":{"addr":"R RITA VILELA LIMA 128, RESTINGA, SP","city":"RESTINGA"},"TREZE DE MAIO":{"addr":"AV TREZE DE MAIO 17, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"VILA TIBERIO":{"addr":"R CEL LUIZ DA CUNHA 436, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"SELECT HIGIENOPOLIS-RIBPR":{"addr":"AV INDEPENDENCIA 925, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"SAUDADE-RPRETO-SP":{"addr":"AV SAUDADE 1421, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"RIB.PRETO-ALTO DA CIDADE":{"addr":"AV 9 DE JULHO 1105, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"PA NOVO SHOP-RIB.PRETO-SP":{"addr":"AV PRES KENNEDY 1500 LJ 412 416, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"RIBEIRAO PRETO":{"addr":"R AMADOR BUENO 605, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"LAGOINHA-INT-SP":{"addr":"R MANOEL PICAO JR 61 Q 10 L 25 26 27, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"J.INDEPENDENCIA-RPRETO-SP":{"addr":"AV CAVALHEIRO PASCHOAL INNECHI 1460, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"TEREOS-PITANGUEIRAS-PAE-SP":{"addr":"RD ARMANDO SALES OLIVEIRA F PIRATININGA SN K 274 C, PITANGUEIRAS, SP","city":"PITANGUEIRAS"},"SELECT BOULEVARD-RIBPRETO":{"addr":"AV NOVE DE JULHO 1088, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"BAIRRO IPIRANGA":{"addr":"AV DOM PEDRO I 820, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"AV MOGIANA-RPRETO-SP":{"addr":"AV MOGIANA 1700 E 1710, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"SELECT RIB.PRETO-ZONA SUL":{"addr":"AV PRESIDENTE VARGAS 1600, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"SELECT USP RIBEIRAO PRETO":{"addr":"AV BANDEIRANTES 3900 QD 55 LT 4, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"PA RIBEIRAO SHOP RPRETO-SP":{"addr":"AV CEL FERNANDO F LEITE 1540 LJ 294, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"RIFAINA":{"addr":"R VISC OURO PRETO 165, RIFAINA, SP","city":"RIFAINA"},"SANTA RITA P QUATRO":{"addr":"AV SEVERINO MEIRELLES 1207, S RITA PASSA QUATRO, SP","city":"S RITA PASSA QUATRO"},"SANTA LUCIA":{"addr":"R BENTO DE ABREU 480, SANTA LUCIA, SP","city":"SANTA LUCIA"},"STA ROSA DE VITERBO":{"addr":"R CORONEL GARCIA 147, SANTA ROSA DE VITERBO, SP","city":"SANTA ROSA DE VITERBO"},"SAO JOAO BOA VISTA":{"addr":"PCA GOV ARMANDO SALLES 160, SAO JOAO DA BOA VISTA, SP","city":"SAO JOAO DA BOA VISTA"},"CENTRO-SJBARRA-SP":{"addr":"R MARECHAL DEODORO 205, SAO JOAQUIM DA BARRA, SP","city":"SAO JOAQUIM DA BARRA"},"SAO JOSE RIO PARDO":{"addr":"PCA XV DE NOVEMBRO 37, SAO JOSE DO RIO PARDO, SP","city":"SAO JOSE DO RIO PARDO"},"SAO SIMAO":{"addr":"PCA DA REPUBLICA 1151, SAO SIMAO, SP","city":"SAO SIMAO"},"SERRANA":{"addr":"R BARAO DE RIO BRANCO 445, SERRANA, SP","city":"SERRANA"},"SERTAOZINHO":{"addr":"R BARAO DO RIO BRANCO 957, SERTAOZINHO, SP","city":"SERTAOZINHO"},"PA CENTRO-SERTAOZINHO-SP":{"addr":"R BARAO DO RIO BRANCO 1192, SERTAOZINHO, SP","city":"SERTAOZINHO"},"SANTA CRUZ PALMEIRAS":{"addr":"AV XV DE NOVEMBRO 621, STA CRUZ PALMEIRAS, SP","city":"STA CRUZ PALMEIRAS"},"TAIACU":{"addr":"R SAO SEBASTIAO 897, TAIACU, SP","city":"TAIACU"},"TAMBAU":{"addr":"R CAP DAVID 11, TAMBAU, SP","city":"TAMBAU"},"CENTRO-TAQUARITINGA-SP":{"addr":"R PRUDENTE DE MORAES 426, TAQUARITINGA, SP","city":"TAQUARITINGA"},"TERRA ROXA":{"addr":"R RUI BARBOSA 56, TERRA ROXA, SP","city":"TERRA ROXA"},"VARGEM GRANDE DO SUL":{"addr":"PCA CAP JOAO PINTO FONTAO 130, VARGEM GRANDE DO SUL, SP","city":"VARGEM GRANDE DO SUL"},"VIRADOURO":{"addr":"R RUI BARBOSA 531, VIRADOURO, SP","city":"VIRADOURO"},"RIBEIRAO PRETO-ZONA SUL":{"addr":"AV PRESIDENTE VARGAS 1600, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"HIGIENOPOLIS":{"addr":"AV INDEPENDENCIA 925, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"PA RIBEIRAO PRETO-SP I":{"addr":"R AMADOR BUENO 605, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"NUCLEO PJ RIBEIRAO PRETO":{"addr":"R AMADOR BUENO 605, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"FI-RIBEIRAO PRETO":{"addr":"AV SAUDADE 1421, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"PAB 3 M-RIBEIRAO PRETO SP":{"addr":"RD RIBEIRAO PRETO ARARAQUARA K 7, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"PAB ORG.EDUCAC.BARAO DE MAUA":{"addr":"R RAMOS DE AZEVEDO 423 FACULDADE, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"SAO FRANCISCO SIST SAUDE-RIB PRETO-SP":{"addr":"R BERNARDINO DE CAMPOS 912, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"JUDICIARIO DE RIBEIRAO PRETO":{"addr":"R OTHO BENZ 910, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"USP RIBEIRAO PRETO-INT-SP":{"addr":"AV BANDEIRANTES 3900 QD 55 LOTE 4, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"UNIP RIBEIRAO PRETO":{"addr":"R CARLOS CONSONI 10, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"HOSP UNIMED RIBEIRAO PRETO-SP":{"addr":"R AUXILIAR CHACARA OLHOS D AGUA 109, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"REG RIBEIRAO PRETO":{"addr":"R AMADOR BUENO 605 1 ANDAR, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"EUROFARMA LABORATORIOS RIB PRETO-SP":{"addr":"AV PRES CASTELO BRANCO 1385, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"REGIAO AGRO RIBEIRAO PRETO-SP":{"addr":"R AMADOR BUENO 605, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"EMPRESAS SP INTERIOR II":{"addr":"R AMADOR BUENO 605, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"FILIAL MARINGA":{"addr":"AV DA SAUDADE 1421, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"BES TRIANGULO MINEIRO":{"addr":"AV SAUDADE 1421 FUNDOS, RIBEIRAO PRETO, SP","city":"RIBEIRAO PRETO"},"SANTA CASA D CAROLINA MALHEIROS":{"addr":"R CAROLINA MALHEIROS 92, SAO JOAO DA BOA VISTA, SP","city":"SAO JOAO DA BOA VISTA"},"SANTA CASA DE SAO JOAO DA BOA VISTA":{"addr":"R CAROLINA MALHEROS 92, SAO JOAO DA BOA VISTA, SP","city":"SAO JOAO DA BOA VISTA"},"SUBPREF CRUZ DAS POSSES- SERTAOZINHO-SP":{"addr":"R TENENTE ISAIAS 918, SERTAOZINHO, SP","city":"SERTAOZINHO"},"PACO MUNICIPAL-SERTAOZINHO-SP":{"addr":"R APRIGIO DE ARAUJO 837, SERTAOZINHO, SP","city":"SERTAOZINHO"},"GARAGEM MUNICIPAL  PREF SERTAOZINHO-SP":{"addr":"R WASHINGTON LUIZ 2350, SERTAOZINHO, SP","city":"SERTAOZINHO"},"SECR MUN OBRAS-SERTAOZINHO-SP":{"addr":"AV NOSSA SENHORA APARECIDA 1773, SERTAOZINHO, SP","city":"SERTAOZINHO"},"PREF TAQUARITINGA":{"addr":"R ROMEU MARSICO 200, TAQUARITINGA, SP","city":"TAQUARITINGA"},"PREF ASPASIA":{"addr":"AV BRASIL 303, ASPASIA, SP","city":"ASPASIA"},"CENTRO-BARRETOS-SP":{"addr":"R VINTE 665, BARRETOS, SP","city":"BARRETOS"},"JBS S/A-BARRETOS-SP":{"addr":"AV CENTRAL SN, BARRETOS, SP","city":"BARRETOS"},"REG BARRETOS":{"addr":"R VINTE 665 2 ANDAR, BARRETOS, SP","city":"BARRETOS"},"FUND EDUC BARRETOS-SP":{"addr":"AV PROF ROBERTO FRADE MONTE 389, BARRETOS, SP","city":"BARRETOS"},"HOSP MUN BEBEDOURO":{"addr":"AV RAUL FURQUIM 2010, BEBEDOURO, SP","city":"BEBEDOURO"},"CENTRO-CATANDUVA-SP":{"addr":"R BRASIL 363, CATANDUVA, SP","city":"CATANDUVA"},"COFCO-CATANDUVA-SP":{"addr":"RD VICINAL JOSE FERNANDES SN, CATANDUVA, SP","city":"CATANDUVA"},"USINA SAO DOMINGOS":{"addr":"RD VICENTE SANCHEZ K 07, CATANDUVA, SP","city":"CATANDUVA"},"FACCHINI S A":{"addr":"RD EUCLIDES DA CUNHA K 504 BLOCO A, COSMORAMA, SP","city":"COSMORAMA"},"PREF DIRCE REIS":{"addr":"AV PRINCESA ISABEL 1822, DIRCE REIS, SP","city":"DIRCE REIS"},"IBIRA-SP":{"addr":"AV CEL JONAS GONCALVES GONZAGA 849, IBIRA, SP","city":"IBIRA"},"PREF JALES-SP":{"addr":"R 5 2266, JALES, SP","city":"JALES"},"PREF MARINOPOLIS":{"addr":"R RIO DE JANEIRO 281, MARINOPOLIS, SP","city":"MARINOPOLIS"},"PREF DE MENDONCA":{"addr":"R WALDEMAR CAPOBIANCO 703, MENDONCA, SP","city":"MENDONCA"},"COFCO-MERIDIANO-SP":{"addr":"FAZENDA BURITI SN, MERIDIANO, SP","city":"MERIDIANO"},"TEREOS-OLIMPIA-SP":{"addr":"RD ASSIS CHATEAUBRIAND SN K 155 CX P 168, OLIMPIA, SP","city":"OLIMPIA"},"PREFEITURA DE POLONI":{"addr":"R 3 DE MAIO 283, POLONI, SP","city":"POLONI"},"ADOLFO":{"addr":"R SANTOS DUMONT 725, ADOLFO, SP","city":"ADOLFO"},"ALTAIR":{"addr":"PCA JOAQUIM C GARCIA 354, ALTAIR, SP","city":"ALTAIR"},"AMERICO DE CAMPOS":{"addr":"R JOAO INOCENCIO DO AMARAL 540, AMERICO DE CAMPOS, SP","city":"AMERICO DE CAMPOS"},"APARECIDA D OESTE":{"addr":"R SAO PAULO 925, APARECIDA D OESTE, SP","city":"APARECIDA D OESTE"},"AURIFLAMA":{"addr":"R JOSE MATAREZIO 51 16, AURIFLAMA, SP","city":"AURIFLAMA"},"BADY BASSITT":{"addr":"PCA RIO PRETO 68, BADY BASSIT, SP","city":"BADY BASSIT"},"PA FCO BARRETO-BARRETOS":{"addr":"PCA FRANCISCO BARRETO 333, BARRETOS, SP","city":"BARRETOS"},"AV QUARENTA E TRES-INT-SP":{"addr":"R 28 73, BARRETOS, SP","city":"BARRETOS"},"PA FUNDACAO PIO XII":{"addr":"AV ALTAIR DA SILVA BONFIM 1217 LJ 06, BARRETOS, SP","city":"BARRETOS"},"SELECT BARRETOS":{"addr":"R VINTE 665, BARRETOS, SP","city":"BARRETOS"},"BURITAMA":{"addr":"PCA D LAFAYETE LIBANO 110, BURITAMA, SP","city":"BURITAMA"},"SELECT C CATANDUVA SP":{"addr":"R BRASIL 363, CATANDUVA, SP","city":"CATANDUVA"},"CATIGUA":{"addr":"PCA SANTA ISABEL 302, CATIGUA, SP","city":"CATIGUA"},"CEDRAL":{"addr":"R OLAVO BILAC 239, CEDRAL, SP","city":"CEDRAL"},"COLINA":{"addr":"PCA DA INACIA J TOLEDO 162, COLINA, SP","city":"COLINA"},"COSMORAMA":{"addr":"R VITORIO STACHISSINI 766, COSMORAMA, SP","city":"COSMORAMA"},"ESTRELA D OESTE":{"addr":"R BRASIL 613, ESTRELA D OESTE, SP","city":"ESTRELA D OESTE"},"FERNANDOPOLIS":{"addr":"R RIO DE JANEIRO 2210, FERNANDOPOLIS, SP","city":"FERNANDOPOLIS"},"GENERAL SALGADO":{"addr":"AV DIOGO GARCIA CARMONA 941, GENERAL SALGADO, SP","city":"GENERAL SALGADO"},"CENTRO-GUAIRA-SP":{"addr":"R DOZE 560, GUAIRA, SP","city":"GUAIRA"},"GUAPIACU":{"addr":"R DA LIBERDADE 534, GUAPIACU, SP","city":"GUAPIACU"},"GUARACI":{"addr":"R ALCEBIADES DE MENEZES 661, GUARACI, SP","city":"GUARACI"},"ICEM":{"addr":"R OVIDIO CUSTODIO MOREIRA 440, ICEM, SP","city":"ICEM"},"INDIAPORA":{"addr":"AV NOVE DE JULHO 1249, INDIAPORA, SP","city":"INDIAPORA"},"JABORANDI":{"addr":"R INACIO M D JUNQUEIRA 481, JABORANDI, SP","city":"JABORANDI"},"CENTRO-JALES-SP":{"addr":"R OITO 2615, JALES, SP","city":"JALES"},"JOSE BONIFACIO":{"addr":"AV NOVE DE JULHO 909, JOSE BONIFACIO, SP","city":"JOSE BONIFACIO"},"MACAUBAL":{"addr":"R CARMO BUISSA 1048, MACAUBAL, SP","city":"MACAUBAL"},"MAGDA":{"addr":"R SAO PAULO 455, MAGDA, SP","city":"MAGDA"},"CENTRO-MIRASSOL-SP":{"addr":"R NOVE DE JULHO 18 99, MIRASSOL, SP","city":"MIRASSOL"},"MIRASSOLANDIA":{"addr":"R ANTONIO LIMA 567, MIRASSOLANDIA, SP","city":"MIRASSOLANDIA"},"MONCOES":{"addr":"R MATO GROSSO 270, MONCOES, SP","city":"MONCOES"},"MONTE APRAZIVEL":{"addr":"PCA SAO JOAO 174, MONTE APRAZIVEL, SP","city":"MONTE APRAZIVEL"},"PREF STA SALETE":{"addr":"AV PRESIDENTE ROOSEVELT SN, SANTA SALETE, SP","city":"SANTA SALETE"},"NEVES PAULISTA":{"addr":"R CAP NEVES 458, NEVES PAULISTA, SP","city":"NEVES PAULISTA"},"NHANDEARA":{"addr":"R ANTONIO BENTO OLIVEIRA 344, NHANDEARA, SP","city":"NHANDEARA"},"NOVA GRANADA":{"addr":"AV ADOLFO RODRIGUES 850, NOVA GRANADA, SP","city":"NOVA GRANADA"},"NOVA LUZITANIA":{"addr":"R LISBOA 1935, NOVA LUSITANIA, SP","city":"NOVA LUSITANIA"},"NOVO HORIZONTE":{"addr":"R VINTE OITO DE OUTUBRO 717, NOVO HORIZONTE, SP","city":"NOVO HORIZONTE"},"CENTRO-OLIMPIA-SP":{"addr":"R NOVE DE JULHO 999, OLIMPIA, SP","city":"OLIMPIA"},"ONDA VERDE":{"addr":"AV COOPCAMP 30, ONDA VERDE, SP","city":"ONDA VERDE"},"ORINDIUVA":{"addr":"R ALFREDO DE TOLEDO 646, ORINDIUVA, SP","city":"ORINDIUVA"},"PALESTINA":{"addr":"PCA SAO JOAO 536, PALESTINA, SP","city":"PALESTINA"},"CENTRO-PALMARES PTA-SP":{"addr":"R QUINZE DE NOVEMBRO 662, PALMARES PAULISTA, SP","city":"PALMARES PAULISTA"},"PALMEIRA DO OESTE":{"addr":"R MAL HUMBERTO A CASTELO BRANCO 46 90, PALMEIRA D OESTE, SP","city":"PALMEIRA D OESTE"},"PARANAPUA":{"addr":"AV ANTONIO GOMES CASTRO 2679, PARANAPUA, SP","city":"PARANAPUA"},"PAULO DE FARIA":{"addr":"R BOM JESUS 623, PAULO DE FARIA, SP","city":"PAULO DE FARIA"},"PINDORAMA":{"addr":"R EXPEDICIONARI 575, PINDORAMA, SP","city":"PINDORAMA"},"POPULINA":{"addr":"R SAO PAULO 1365, POPULINA, SP","city":"POPULINA"},"POTIRENDABA":{"addr":"R CAP JOSE OLIVA 949, POTIRENDABA, SP","city":"POTIRENDABA"},"RIOLANDIA":{"addr":"R DEZ 504, RIOLANDIA, SP","city":"RIOLANDIA"},"SALES":{"addr":"R CEZARIO JOSE DE CASTILHO 482, SALES, SP","city":"SALES"},"SANTA ALBERTINA":{"addr":"R FRANCISCO SCHIMITH 909, SANTA ALBERTINA, SP","city":"SANTA ALBERTINA"},"SANTA FE DO SUL-SP":{"addr":"AV NAVARRO DE ANDRADE 2043, SANTA FE DO SUL, SP","city":"SANTA FE DO SUL"},"SANTANA DA PTE PENSA":{"addr":"AV SANTANA 657, SANTANA PONTE PENSA, SP","city":"SANTANA PONTE PENSA"},"NOVA REDENTORA":{"addr":"AV BRIGADEIRO FARIA LIMA 5836, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"CENTRO-SJRPRETO-SP":{"addr":"R DEL PINTO DE TOLEDO 3032, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"SELECT SAO JOSE RIO PRETO":{"addr":"R BERNARDINO DE CAMPOS 3918, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"ALTO R PRETO-SJRPRETO-SP":{"addr":"AV BADY BASSITT 4230, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"SJRPRETO-AV.ALBERTO ANDALO":{"addr":"AV DR ALBERTO ANDALO 3250 QD 8 LT B CP, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"PA ALTO R PRETO-SJRPRETO-SP I":{"addr":"AV BADY BASSITT 4230, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"CENTRO MED RIO PRETO LTDA":{"addr":"AV MURCHID HOMSI 1385, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"SOC PORT BN SJRPRETO":{"addr":"R LUIS DE CAMOES 3150, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"UNESP SJRP IBILCE":{"addr":"R CRISTOVAO COLOMBO 2265, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"STA CASA SJRPRETO":{"addr":"R DR FRITZ JACOBS 1236, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"PAB FUNFARME SJRPRETO":{"addr":"AV BRIG FARIA LIMA 5544, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"FAMERP SJR PRETO":{"addr":"AV BRIG FARIA LIMA 5416, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"CEAGESP CENTRAL SJR PRETO":{"addr":"AV JOAO BATISTA VETORAZZO 1600, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"UNID SELECT SP INTERIOR":{"addr":"R DELEGADO PINTO DE TOLEDO 3032 1 ANDAR, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"NUCLEO PJ SJ RIO PRETO":{"addr":"R DELEGADO PINTO DE TOLEDO 3032, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"REG SAO JOSE DO RIO PRETO":{"addr":"R DELEGADO PINTO DE TOLEDO 3032 1 AND, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"REG VOTUPORANGA":{"addr":"R AMAZONAS 3357, VOTUPORANGA, SP","city":"VOTUPORANGA"},"SPAL IND BRAS BEBIDAS SJRPRETO-SP":{"addr":"R FRANCISCO CURTI 65, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"COMERCIAL BES S J DO RIO PRETO":{"addr":"R VOLUNTARIOS DE SAO PAULO 3086, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"FACCHINI S/A-RIO PRETO II":{"addr":"RD WASHINGTON LUIZ K 442,5 K 442, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"FI-SAO JOSE DO RIO PRETO":{"addr":"R VOLUNTARIOS DE SAO PAULO 3086, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"UNIP SJRPRETO - TARRAF II":{"addr":"AV PRES JUSCELINO KUBITSCHEK DE OLIVEIRA SN, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"FACCHINI S/A - III":{"addr":"RD WASHINGTON LUIS K 442 SN, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"FACCHINI S/A - II":{"addr":"AV FELICIANO SALES CUNHA 2999 3055, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"FUNFARME":{"addr":"AV BRIG FARIA LIMA 5416, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"MIRASSOLANDIA-SJRPRETO-SP":{"addr":"AV MIRASSOLANDIA 1677, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"PA SHOP SJRPRETO-SP":{"addr":"AV ANISIO HADDAD 6363 QD SN LT C P, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"JD STA LUZIA-SJRPRETO-SP":{"addr":"AV POTIRENDABA 1603, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"BOA VISTA-SJRPRETO-INT-SP":{"addr":"R CAMPOS SALES 1777 QD 220 LOT D F, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"MACENO":{"addr":"AV NOSSA SENHORA DA PAZ 2443, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"SELECT AV.ALB ANDALO-SJRP":{"addr":"AV DR ALBERTO ANDALO 3250 QD 8 LT B CP, SAO JOSE DO RIO PRETO, SP","city":"SAO JOSE DO RIO PRETO"},"SEBASTIANOPOLIS DO SUL":{"addr":"R ELIAS CHIBEB 470, SEBASTIANOPOLIS SUL, SP","city":"SEBASTIANOPOLIS SUL"},"PA SUZANAPOLIS-SP":{"addr":"R SAO PEDRO 551, SUZANAPOLIS, SP","city":"SUZANAPOLIS"},"COFCO-SEBASTIANOPOLIS-SP":{"addr":"EST VICINAL ANTONIO ABREU DO VALE SN K 10, SEBASTIANOPOLIS SUL, SP","city":"SEBASTIANOPOLIS SUL"},"TABAPUA":{"addr":"R DR ARTHUR ORTENBLAD 1194, TABAPUA, SP","city":"TABAPUA"},"CENTRO-TANABI-SP":{"addr":"R CEL MILITAO 510, TANABI, SP","city":"TANABI"},"UCHOA":{"addr":"PCA JOAO BIROLLI 11, UCHOA, SP","city":"UCHOA"},"UNIAO PAULISTA":{"addr":"R SAO PEDRO 823, UNIAO PAULISTA, SP","city":"UNIAO PAULISTA"},"TEREOS-SEVERINIA-SP":{"addr":"RD ARMANDO SALES OLIVEIRA FAZ GUARANI SN K 430 CX, SEVERINIA, SP","city":"SEVERINIA"},"URANIA":{"addr":"AV BRASIL 276, URANIA, SP","city":"URANIA"},"URUPES":{"addr":"R JOSE BONIFACIO 584, URUPES, SP","city":"URUPES"},"VALENTIM GENTIL":{"addr":"AV CAVALIN 647, VALENTIM GENTIL, SP","city":"VALENTIM GENTIL"},"POZZOBON-VOTUPORANGA-SP":{"addr":"AV EMILIO ARROYO HERNANDES 2575, VOTUPORANGA, SP","city":"VOTUPORANGA"},"SELECT CENTRO-VOTUPORANGA-SP":{"addr":"R AMAZONAS 3357, VOTUPORANGA, SP","city":"VOTUPORANGA"},"TEREOS-TANABI-SP":{"addr":"RD VICINAL IZIDORO SARAN FAZ TANABI SN K 18, TANABI, SP","city":"TANABI"},"CENTRO-VOTUPORANGA-SP":{"addr":"R AMAZONAS 3357, VOTUPORANGA, SP","city":"VOTUPORANGA"},"FUND EDUCACIONAL VOTUPORANGA":{"addr":"R PERNAMBUCO 4196, VOTUPORANGA, SP","city":"VOTUPORANGA"},"PAB PREF VOTUPORANGA-SP":{"addr":"R PARA 3227, VOTUPORANGA, SP","city":"VOTUPORANGA"},"FACCHINI":{"addr":"AV DAS NACOES 1425, VOTUPORANGA, SP","city":"VOTUPORANGA"},"FACCHINI S/A - I":{"addr":"RD EUCLIDES DA CUNHA K 520 SN, VOTUPORANGA, SP","city":"VOTUPORANGA"},"FUNDACAO EDU VOTUPORANGA CAMPUS":{"addr":"AV NASSER MARAO 3069 BLOCO 2, VOTUPORANGA, SP","city":"VOTUPORANGA"},"PREF ZACARIAS":{"addr":"R CASTRO ALVES 637, ZACARIAS, SP","city":"ZACARIAS"},"PAE GUARDA MUNICIPAL BARUERI":{"addr":"R DA PRATA 752, BARUERI, SP","city":"BARUERI"},"NUCLEO PJ ALPHAVILLE":{"addr":"AL ARAGUAIA 731, BARUERI, SP","city":"BARUERI"},"PAB C E A MODAS LTDA BARUERI":{"addr":"AL ARAGUAIA 1222, BARUERI, SP","city":"BARUERI"},"PAB TECBAN ALPHAVILLE":{"addr":"AL ANDROMEDA 2000 QUADRA 1, BARUERI, SP","city":"BARUERI"},"PAB MACKENZIE TAMBORE BARUER":{"addr":"AV TUCUNARE 2000, BARUERI, SP","city":"BARUERI"},"ACCENTURE ALHAVILLE BARUERI-SP":{"addr":"R BONNARD 980, BARUERI, SP","city":"BARUERI"},"PHILIP MORRIS UNIDADE BARUERI":{"addr":"AV TUCUNARE 711, BARUERI, SP","city":"BARUERI"},"PAE PACO MUNICIPAL BARUERI":{"addr":"R DO PACO 8, BARUERI, SP","city":"BARUERI"},"PAE MACKENZIE TAMBORE SP":{"addr":"AV MACKENZIE SN MACKENZIE, BARUERI, SP","city":"BARUERI"},"PAE C & A CDT BARUERI SP":{"addr":"AV PIRACEMA 1231, BARUERI, SP","city":"BARUERI"},"PAE TELEFONICA-ALPHAVILLE":{"addr":"AV TAMBORE 341, BARUERI, SP","city":"BARUERI"},"PERNAMBUCANAS CENTRO DISTRIBUICAO - BARUERI":{"addr":"RD CASTELO BRANCO 3100 K 046 BL 100, BARUERI, SP","city":"BARUERI"},"REG ALPHAVILLE":{"addr":"AL ARAGUAIA 631 1 AND, BARUERI, SP","city":"BARUERI"},"PAE PREF BARUERI-UBS JARDIM PAULISTA-SP":{"addr":"AV MARGINAL DIREITA SN, BARUERI, SP","city":"BARUERI"},"PAE SAMEB BARUERI-SP":{"addr":"R PROF JOAO DA MATA E LUZ 262, BARUERI, SP","city":"BARUERI"},"PA SQUARE GJA VIANA-COTIA-SP":{"addr":"RD RAPOSO TAVARES K 22,14 SN GLEBAS 3,4 159, COTIA, SP","city":"COTIA"},"WURTH DO BRASIL COTIA-SP":{"addr":"R ADOLF WURTH 557, COTIA, SP","city":"COTIA"},"PAB ACNIELSEN GRANJA VIANA":{"addr":"R MONTE CASTELO 55, COTIA, SP","city":"COTIA"},"PAE IDEMIA DO BRASIL-SP":{"addr":"R SOLUCOES DO LAR 407 COND MIRANDA, COTIA, SP","city":"COTIA"},"VIGOR ALIMENTOS S/A-EMBU-SP":{"addr":"RD REGIS BITTENCOURT 1962 GALPAO 1 E 2, EMBU DAS ARTES, SP","city":"EMBU DAS ARTES"},"CIPO GUACU":{"addr":"R BENEDITO JANDIRO SOARES 64, EMBU-GUACU, SP","city":"EMBU-GUACU"},"PREF EMBU GUACU":{"addr":"R CEL TENORIO DE BRITO 458, EMBU-GUACU, SP","city":"EMBU-GUACU"},"UNIAO QUIMICA-EMBU GUACU":{"addr":"R CEL LUIZ TENORIO DE BRITO 90, EMBU-GUACU, SP","city":"EMBU-GUACU"},"NUCLEO PJ GUARULHOS":{"addr":"R FELICIO MARCONDES 227, GUARULHOS, SP","city":"GUARULHOS"},"BOSQUE MAIA":{"addr":"AV TIRADENTES 1481, GUARULHOS, SP","city":"GUARULHOS"},"REG GUARULHOS":{"addr":"R FELICIO MARCONDES 227, GUARULHOS, SP","city":"GUARULHOS"},"REYDEL AUTOMOTIVE GUARULHOS-SP":{"addr":"R ORLANDA BERGAMO 1062, GUARULHOS, SP","city":"GUARULHOS"},"INDL LEVORIN GUARULHOS-SP":{"addr":"AV MONTEIRO LOBATO 2495, GUARULHOS, SP","city":"GUARULHOS"},"CUMMINS MATRIZ GUARULHOS-SP":{"addr":"R JATI 310, GUARULHOS, SP","city":"GUARULHOS"},"SERVCATER INTERNAC SP-SP":{"addr":"RD HELIO SMIDT SN SETOR 1, GUARULHOS, SP","city":"GUARULHOS"},"CONTINENTAL BRASIL-GUARULHOS":{"addr":"AV SEN ADOLF SCHINDLING 131, GUARULHOS, SP","city":"GUARULHOS"},"PAB HGG GUARULHOS SP":{"addr":"AL DOS LIRIOS 200, GUARULHOS, SP","city":"GUARULHOS"},"SOFAPE CUMBICA GUARULHOS-SP":{"addr":"RD PRES DUTRA SN K 213,8, GUARULHOS, SP","city":"GUARULHOS"},"PAB EDITORA FTD(CA)GUARULHOS":{"addr":"AV ANTONIO BARDELLA 300, GUARULHOS, SP","city":"GUARULHOS"},"FI-GUARULHOS":{"addr":"R FELICIO MARCONDES 405 3 ANDAR, GUARULHOS, SP","city":"GUARULHOS"},"BAUDUCCO GUARULHOS-SP":{"addr":"R ARGENTINA 375 0563, GUARULHOS, SP","city":"GUARULHOS"},"PAB UNG - GUARULHOS SP":{"addr":"PCA TEREZA CRISTINA 1, GUARULHOS, SP","city":"GUARULHOS"},"PAB BASE AEREA CUMBICA SP":{"addr":"AV MONTEIRO LOBATO 5331, GUARULHOS, SP","city":"GUARULHOS"},"SELECT AEROP INT-GUARULHOS":{"addr":"AV JAMIL JOAO ZARIF SN TERM 1 MEZ, GUARULHOS, SP","city":"GUARULHOS"},"ALLERGAN PRODUTOS FARMACEUTICOS":{"addr":"AV GUARULHOS 3800, GUARULHOS, SP","city":"GUARULHOS"},"BAUDUCCO ADM CENTRAL-GUARULHOS-SP":{"addr":"R FRITZ REIMAN 628, GUARULHOS, SP","city":"GUARULHOS"},"ABB LTDA-GUARULHOS-SP":{"addr":"AV MONTEIRO LOBATO 3411, GUARULHOS, SP","city":"GUARULHOS"},"INDL LEVORIN GUARULHOS":{"addr":"AV MONTEIRO LOBATO 2495, GUARULHOS, SP","city":"GUARULHOS"},"BAUDUCCO BONSUCESSO-GUARULHOS-SP":{"addr":"R CARLO BAUDUCCO 200, GUARULHOS, SP","city":"GUARULHOS"},"AMBEV GUARULHOS-SP":{"addr":"EST ARY JORGE ZEITUNE 3100, GUARULHOS, SP","city":"GUARULHOS"},"DEVILLE HOTEIS E TUR GUARULHOS-SP":{"addr":"AV MONTEIRO LOBATO SN AIPORT MARRIOT, GUARULHOS, SP","city":"GUARULHOS"},"SOFAPE BONSUCESSO GUARULHOS-SP":{"addr":"AV AMANCIO GAIOLLI 1825 C, GUARULHOS, SP","city":"GUARULHOS"},"VIACAO CAMPO DOS OUROS":{"addr":"R MONTE CARLO 222, GUARULHOS, SP","city":"GUARULHOS"},"AUTO SHOPPING INTERNACIONAL DE GUARULHOS":{"addr":"R ANTON PHILIPS 1 PREDIO B LJ 225 A, GUARULHOS, SP","city":"GUARULHOS"},"PAE MAGGION IND DE PNEUS E MAQUINAS-SP":{"addr":"R JOSE CAMPANELLA 467 501, GUARULHOS, SP","city":"GUARULHOS"},"HOTELARIA ACCORINVEST-GUARULHOS-SP":{"addr":"RD HELIO SMIDT SN ACES 1 BAS AER, GUARULHOS, SP","city":"GUARULHOS"},"INOVAT IND FARMACEUTICA-GUARULHOS-SP":{"addr":"AV PRES TRANCREDO DE ALMEIDA NEVES 1555, GUARULHOS, SP","city":"GUARULHOS"},"BAUDUCCO-GUARULHOS-SP":{"addr":"EST DA OLARIA 136 BLOCO C, GUARULHOS, SP","city":"GUARULHOS"},"CUMMINS FILTROS GUARULHOS-SP":{"addr":"AV NARAIN SINGH 770, GUARULHOS, SP","city":"GUARULHOS"},"PAE HONEYWELL GUARULHOS SP":{"addr":"AV JULIA GAIOLLI 250, GUARULHOS, SP","city":"GUARULHOS"},"BOEHRINGER - ITAPEC SERRA":{"addr":"RD REGIS BITTENCOURT K 286 SN, ITAPECERICA DA SERRA, SP","city":"ITAPECERICA DA SERRA"},"EUROFARMA LABORATORIOS ITAPEVI-SP":{"addr":"RD PRES CASTELO BRANCO SN K 35,6, ITAPEVI, SP","city":"ITAPEVI"},"PAE EUROFARMA LABORAT LTDA":{"addr":"RD PRESIDENTE CASTELO BRANCO SN K 35.6, ITAPEVI, SP","city":"ITAPEVI"},"PCA DQ CAXIAS-OSASCO-SP":{"addr":"R ANTONIO AGU 1105, OSASCO, SP","city":"OSASCO"},"FI-OSASCO":{"addr":"R ANTONIO AGU 502, OSASCO, SP","city":"OSASCO"},"MERCADO LIVRE LT-OSASCO-SP":{"addr":"AV NACOES UNIDAS 3003, OSASCO, SP","city":"OSASCO"},"PAE ARVIN MERITOR OSASCO":{"addr":"AV JOAO BATISTA 825, OSASCO, SP","city":"OSASCO"},"FEMSA-MACRO CD":{"addr":"R AGRICOLA LA PAZ TRISTANTE 35, OSASCO, SP","city":"OSASCO"},"CIMAF CABOS S/A":{"addr":"AV MARECHAL RONDON 915, OSASCO, SP","city":"OSASCO"},"UNIFIEO VILA YARA":{"addr":"AV FRANZ VOEGEL 300 BL VERDE INT, OSASCO, SP","city":"OSASCO"},"NUCLEO PROSPERA OSASCO":{"addr":"R D PRIMITIVA VIANCO 556, OSASCO, SP","city":"OSASCO"},"PAE MERCADO LIVRE-SP":{"addr":"AV DOMINGOS ODALIA FILHO 301, OSASCO, SP","city":"OSASCO"},"MERCADO LIVRE LTDA-OSASCO-SP":{"addr":"AV NACOES UNIDAS 3000, OSASCO, SP","city":"OSASCO"},"BELGO BEKAERT ARAMES LTDA":{"addr":"AV MARECHAL RONDON 1215, OSASCO, SP","city":"OSASCO"},"ALDEIA DA SERRA-S PARN-SP":{"addr":"AV DAS NUVENS 53 1 ANDAR, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"SANT.DE PARNAIBA-ALPHA RESID":{"addr":"AV DR YOJIRO TAKAOKA 4736, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"SONDA-PROCWORK-SANT.PARNAIBA-SP":{"addr":"AL EUROPA 1206, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"PAB PREF.SANTANA DE PARNAIBA":{"addr":"AV MARECHAL MASCARENHAS DE MORAES 1283, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"URUBUPUNGA-S PARN-SP":{"addr":"R ESTRELA DALVA 45, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"TELEFONICA VIVO - CPD TAMBORE":{"addr":"AV MARCOS PENTEADO DE ULHOA RODRIGUES SN, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"UNIP ALPHAVILLE":{"addr":"AV YOJIRO TAKAOKA 3500, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"BARUERI":{"addr":"AV DOM PEDRO II 112, BARUERI, SP","city":"BARUERI"},"BARUERI-PREFEITURA":{"addr":"AV HENRIQUETA MENDES GUERRA 550, BARUERI, SP","city":"BARUERI"},"SELECT ALPHAVILLE-BARUERI":{"addr":"AL ARAGUAIA 731, BARUERI, SP","city":"BARUERI"},"ALPHAVILLE-BARUERI-SP":{"addr":"AL ARAGUAIA 1443, BARUERI, SP","city":"BARUERI"},"ALPHAVILLE COM-BARUERI-SP":{"addr":"AL ARAGUAIA 631 E 641, BARUERI, SP","city":"BARUERI"},"AL RIO NEGRO-INT-SP":{"addr":"AL RIO NEGRO 967 LJ 03, BARUERI, SP","city":"BARUERI"},"BARUERI-CENTRO":{"addr":"R CAMPOS SALES 260 LJ 1,2, BARUERI, SP","city":"BARUERI"},"CARAPICUIBA":{"addr":"AV RUI BARBOSA 374, CARAPICUIBA, SP","city":"CARAPICUIBA"},"VILA DIRCE-CARAPICUIBA-SP":{"addr":"AV INOCENCIO SERAFICO 3445 TER LJS 06 A 10, CARAPICUIBA, SP","city":"CARAPICUIBA"},"COTIA":{"addr":"AV PROF MANOEL JOSE PEDROSO 115, COTIA, SP","city":"COTIA"},"COTIA-GRANJA VIANA":{"addr":"R USHIMA KIRA 20, COTIA, SP","city":"COTIA"},"SELECT SQUARE GJA VIANA-COTIA":{"addr":"RD RAPOSO TAVARES K 22,14 SN GLEBAS 3,4 159, COTIA, SP","city":"COTIA"},"PA SHOP GJA VIANA-COTIA-SP":{"addr":"RD RAPOSO TAVARES 23500 PS L 2 LJ 305, COTIA, SP","city":"COTIA"},"PA EMBU DAS ARTES-SP":{"addr":"R NOSSA SENHORA DO ROSARIO 156, EMBU DAS ARTES, SP","city":"EMBU DAS ARTES"},"EMBU-GUACU":{"addr":"R BOA VISTA 362, EMBU-GUACU, SP","city":"EMBU-GUACU"},"URB-GUARULHOS-AV.S.DUMONT":{"addr":"AV SANTOS DUMONT 1695, GUARULHOS, SP","city":"GUARULHOS"},"PICANCO-INT-SP":{"addr":"R Cachoeira 526, GUARULHOS, SP","city":"GUARULHOS"},"SELECT GUARULHOS":{"addr":"R FELICIO MARCONDES 227, GUARULHOS, SP","city":"GUARULHOS"},"BONSUCESSO-GUARULHOS-SP":{"addr":"AV JUREMA 550 SALAO 3, GUARULHOS, SP","city":"GUARULHOS"},"BOM CLIMA":{"addr":"AV TIRADENTES 3343, GUARULHOS, SP","city":"GUARULHOS"},"NUCLEO PJ TABOAO":{"addr":"RD REGIS BITTENCOURT 315, TABOAO DA SERRA, SP","city":"TABOAO DA SERRA"},"PAB SERCOM-SP":{"addr":"R JOSE MARI 80 CJ 500 600 PAV 1, TABOAO DA SERRA, SP","city":"TABOAO DA SERRA"},"PAB TABOAO DA SERRA P MUNICI":{"addr":"PCA MIGUEL ORTEGA 439, TABOAO DA SERRA, SP","city":"TABOAO DA SERRA"},"NOVARTIS TABOAO":{"addr":"AV IBIRAMA 518, TABOAO DA SERRA, SP","city":"TABOAO DA SERRA"},"VL NOVA GALVAO-INT-SP":{"addr":"R TREZE DE MAIO 223, GUARULHOS, SP","city":"GUARULHOS"},"GUARULHOS":{"addr":"R CAP GABRIEL 276, GUARULHOS, SP","city":"GUARULHOS"},"PA JD CUMBICA-SP":{"addr":"R HOLANDESA ESQ C AV SANTOS DUMONT 422 ANT 291 293, GUARULHOS, SP","city":"GUARULHOS"},"PA SHOP INTERNAC GUARULHOS-SP":{"addr":"R ENGENHEIRO CAMILO OLIVETTI SN, GUARULHOS, SP","city":"GUARULHOS"},"JD PRES DUTRA-GUARULHOS-SP":{"addr":"AV PAPA JOAO PAULO I 2911, GUARULHOS, SP","city":"GUARULHOS"},"GOPOUVA-INT-SP":{"addr":"AV EMILIO RIBAS 2221, GUARULHOS, SP","city":"GUARULHOS"},"GUARULHOS-PONTE GRANDE":{"addr":"AV GUARULHOS 4014, GUARULHOS, SP","city":"GUARULHOS"},"AER INT DE SAO PAULO":{"addr":"AV JAMIL JOAO ZARIF SN TERMINAL 1 MEZ, GUARULHOS, SP","city":"GUARULHOS"},"LOJA OLÉ - GUARULHOS":{"addr":"R João Gonçalves, 578, GUARULHOS, SP","city":"GUARULHOS"},"SELECT BSQ MAIA-GUARULHOS":{"addr":"AV TIRADENTES 1481, GUARULHOS, SP","city":"GUARULHOS"},"ITAPECERICA DA SERRA":{"addr":"AV QUINZE DE NOVEMBRO 60 72, ITAPECERICA DA SERRA, SP","city":"ITAPECERICA DA SERRA"},"ITAPEVI":{"addr":"AV RUBENS CARAMEZ 19, ITAPEVI, SP","city":"ITAPEVI"},"JANDIRA-SP":{"addr":"R BENEDITO PEREIRA LEITE 48, JANDIRA, SP","city":"JANDIRA"},"JUQUITIBA-INT-SP":{"addr":"R JORGE VICTOR VIEIRA 36, JUQUITIBA, SP","city":"JUQUITIBA"},"VILA DOS REMEDIOS":{"addr":"AV DOS REMEDIOS 779, OSASCO, SP","city":"OSASCO"},"SELECT OSASCO":{"addr":"R ANTONIO AGU 1105, OSASCO, SP","city":"OSASCO"},"OSASCO-CENTRO":{"addr":"AV MAL RONDON 101 LT 7 QD 23, OSASCO, SP","city":"OSASCO"},"HELENA MARIA-INT-SP":{"addr":"AV PRES MEDICI 120 L 6 E 7 Q B, OSASCO, SP","city":"OSASCO"},"PA VL CAMPESINA-OSASCO-SP":{"addr":"R NARCISO STURLINI 112, OSASCO, SP","city":"OSASCO"},"ANTONIO C COSTA-INT-SP":{"addr":"AV ANTONIO CARLOS COSTA 985 987 L 8, OSASCO, SP","city":"OSASCO"},"OSASCO":{"addr":"R D PRIMITIVA VIANCO 556, OSASCO, SP","city":"OSASCO"},"VL YARA-OSASCO-SP":{"addr":"R DEP EMILIO CARLOS 1388, OSASCO, SP","city":"OSASCO"},"KM 18 OSASCO-INT-SP":{"addr":"R NOSSA SRA IMACULADA CONCEICAO 110, OSASCO, SP","city":"OSASCO"},"SANT.DE PARNAIBA-FAZENDINHA":{"addr":"EST TENENTE MARQUES 4886 LJ 06, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"SANTANA DE PARNAIBA":{"addr":"R SUZANA DIAS 369, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"SELECT ALDEIA DA SERRA":{"addr":"AV DAS NUVENS 53 1 ANDAR, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"SELECT ALPHA RESID-SP":{"addr":"AV DR YOJIRO TAKAOKA 4736, SANTANA DE PARNAIBA, SP","city":"SANTANA DE PARNAIBA"},"PCA NICOLA-TSERRA-SP":{"addr":"RD REGIS BITTENCOURT 315, TABOAO DA SERRA, SP","city":"TABOAO DA SERRA"},"R DO TESOURO-TSERRA-SP":{"addr":"R DO TESOURO 198, TABOAO DA SERRA, SP","city":"TABOAO DA SERRA"},"R DO CARMO-TSERRA-SP":{"addr":"R DO CARMO 134, TABOAO DA SERRA, SP","city":"TABOAO DA SERRA"},"CENTRO-VARGEM GDE PTA-SP":{"addr":"AV ELIAS ALVES DA COSTA 449, VARGEM GRANDE PTA, SP","city":"VARGEM GRANDE PTA"}};
+
+// ─── COORDS ───────────────────────────────────────────────────────────────────
+const KC = {
+  'CAMPINAS':[-22.9056,-47.0608],'BARAO GERALDO':[-22.8178,-47.0578],
+  'AMOREIRAS':[-22.8972,-47.0628],'VINHEDO':[-23.0297,-46.9752],
+  'VALINHOS':[-22.9736,-46.9961],'INDAIATUBA':[-23.0904,-47.2192],
+  'SUMARE':[-22.8219,-47.2669],'AMERICANA':[-22.7390,-47.3320],
+  'SANTA BARBARA DO OESTE':[-22.7536,-47.4139],'STA BARBARA DO OESTE':[-22.7536,-47.4139],
+  'PAULINIA':[-22.7619,-47.1536],'JAGUARIUNA':[-22.7031,-46.9856],
+  'CONCHAL':[-22.3256,-47.1736],'PIRACICABA':[-22.7253,-47.6492],
+  'LIMEIRA':[-22.5644,-47.4014],'ARARAS':[-22.3572,-47.3836],
+  'LEME':[-22.1878,-47.3906],'CORDEIROPOLIS':[-22.4778,-47.4575],
+  'RIO CLARO':[-22.4117,-47.5608],'AMPARO':[-22.7067,-46.7736],
+  'SOCORRO':[-22.5911,-46.5278],'SERRA NEGRA':[-22.6100,-46.7014],
+  'MOGI MIRIM':[-22.4319,-46.9578],'AGUAS DE LINDOIA':[-22.4811,-46.6317],
+  'AGUAI':[-22.0608,-46.9764],'PIRASSUNUNGA':[-21.9978,-47.4253],
+  'SAO PEDRO':[-22.5472,-47.9131],'SANTA MARIA DA SERRA':[-22.5736,-48.1703],
+  'ITAPIRA':[-22.4361,-46.8239],'ARTUR NOGUEIRA':[-22.5736,-47.1703],
+  'MOGI GUACU':[-22.3719,-46.9403],'M GUACU':[-22.3719,-46.9403],
+  'TIETE':[-22.9183,-47.7036],'SOROCABA':[-23.5015,-47.4526],
+  'ITU':[-23.2642,-47.2986],'SALTO':[-23.2011,-47.2894],
+  'TATUI':[-23.3522,-47.8569],'BOITUVA':[-23.2833,-47.6736],
+  'CAJAMAR':[-23.3608,-46.8778],'GUARULHOS':[-23.4628,-46.5333],
+  'BOSQUE MAIA':[-23.4556,-46.5431],'MAIRIPORA':[-23.3178,-46.5869],
+  'ATIBAIA':[-23.1178,-46.5503],'BRAGANCA PAULISTA':[-22.9519,-46.5419],
+  'BRAGANCA PTA':[-22.9519,-46.5419],'ITATIBA':[-23.0058,-46.8386],
+  'ITUPEVA':[-23.1536,-47.0597],'CABREUVA':[-23.3119,-47.1336],
+  'SANTANA DE PARNAIBA':[-23.4428,-46.9181],'OSASCO':[-23.5328,-46.7919],
+  'BARUERI':[-23.5025,-46.8764],'ALPHAVILLE':[-23.4928,-46.8494],
+  'ITAPECERICA DA SERRA':[-23.7161,-46.8514],'TABOAO DA SERRA':[-23.6108,-46.7575],
+  'VOTORANTIM':[-23.5472,-47.4317],'PIEDADE':[-23.9139,-47.4261],
+  'CAPAO BONITO':[-24.0050,-48.3478],'SAO MIGUEL ARCANJO':[-23.8744,-48.1617],
+  'MAIRINQUE':[-23.5342,-47.1742],'ITAPETININGA':[-23.5917,-48.0536],
+  'IPERO':[-23.3467,-47.6928],'EMBU GUACU':[-23.8328,-46.8133],
+  'COTIA':[-23.6033,-46.9194],'FRANCISCO MORATO':[-23.2800,-46.7428],
+  'JARINU':[-23.1025,-46.7292],'VARZEA PAULISTA':[-23.2100,-46.8292],
+  'JUNDIAI':[-23.1864,-46.8842],'PICANCO':[-23.5106,-46.7442],
+  'SAO ROQUE':[-23.5261,-47.1358],'VARGEM GRANDE PAULISTA':[-23.5653,-47.2208],
+  'ARACARIGUAMA':[-23.4361,-47.0614],'PORTO FELIZ':[-23.2139,-47.5228],
+  'CERQUILHO':[-23.1656,-47.7464],'IBIUNA':[-23.6578,-47.2228],
+  'EMBU':[-23.6450,-46.8508],'PARQUE DA UVA':[-23.4628,-46.5333],
+};
+
+const COLORS = ['#2563eb','#ea580c','#16a34a','#7c3aed','#0e7490','#b45309','#be185d','#374151'];
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let base = 'c1';
+let pts  = [];    // [{name, coord}]
+let rts  = [];    // [{name,color,stops,totalDist,totalTime,legs,geometry}]
+let map, layers = [];
+
+// ─── MAP ──────────────────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map('map').setView([-22.95, -47.0], 9);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap', maxZoom: 19
+  }).addTo(map);
+}
+
+function clearLayers() {
+  layers.forEach(l => map.removeLayer(l));
+  layers = [];
+}
+
+// ─── GEOCODE CACHE ────────────────────────────────────────────────────────────
+const GC = {}; // name -> [lat, lng]
+
+// ─── FUZZY MATCH against AG_DB ────────────────────────────────────────────────
+function normalize(s) {
+  return s.toUpperCase()
+    .replace(/^(LOJA EXCLUSIVA |LOJA SELECT |PA SHOP INT |PAE |PA |WORK CAFE |SELECT |CENTRO-|JARDIM |PRACA |PLAT MID |R DO TESOURO-|AMOREIRAS-|SUMARE-|PICANCO-|MONSENHOR-|BOSQUE |FI-)/i,'')
+    .replace(/\s*-\s*(SP|MG|RJ)\s*\d*$/i,'')
+    .replace(/\s+(SP|MG|RJ)\s*$/i,'')
+    .replace(/\s*INT\s*$/i,'')
+    .replace(/[^A-Z0-9 ]/g,' ')
+    .replace(/\s+/g,' ').trim();
+}
+
+function findAgency(name) {
+  const up = name.toUpperCase().trim();
+  // 1. Exact match in DB
+  if (AG_DB[up]) return AG_DB[up];
+  // 2. Check custom localStorage entries
+  const custom = loadCustom();
+  if (custom[up]) return {addr: custom[up].addr, city: custom[up].city};
+  // 3. Normalized match
+  const norm = normalize(up);
+  for (const [k, v] of Object.entries(AG_DB)) {
+    if (normalize(k) === norm) return v;
+  }
+  // 4. Fuzzy: normalized contains or is contained
+  for (const [k, v] of Object.entries(AG_DB)) {
+    const kn = normalize(k);
+    if (norm.length > 3 && (kn.includes(norm) || norm.includes(kn))) return v;
+  }
+  // 5. First token match (city fallback)
+  const firstToken = norm.split(' ')[0];
+  if (firstToken.length > 3) {
+    for (const [k, v] of Object.entries(AG_DB)) {
+      if (normalize(k).startsWith(firstToken)) return v;
+    }
+  }
+  return null;
+}
+
+// ─── COORD RESOLVE ────────────────────────────────────────────────────────────
+// Returns cached coord or queues geocoding; calls cb(coord) when done
+async function resolveCoord(name) {
+  if (GC[name]) return GC[name];
+  // Try KC first (fast, no network)
+  const up = name.toUpperCase().trim();
+  if (KC[up]) { GC[name]=KC[up]; return KC[up]; }
+  for (const [k, v] of Object.entries(KC)) {
+    const norm = normalize(up);
+    if (normalize(k) === norm || norm.includes(normalize(k)) && normalize(k).length > 4) { GC[name]=v; return v; }
+  }
+  // Try agency DB -> geocode address
+  const ag = findAgency(name);
+  if (ag) {
+    const coord = await geocodeAddr(ag.addr, ag.city);
+    if (coord) { GC[name]=coord; return coord; }
+    // If geocoding fails, use city coords from KC
+    const cityCoord = KC[ag.city] || KC[ag.city.split(' ')[0]];
+    if (cityCoord) { GC[name]=cityCoord; return cityCoord; }
+  }
+  return null;
+}
+
+async function geocodeAddr(addr, city) {
+  try {
+    const q = encodeURIComponent(addr + ', ' + (city||'') + ', SP, Brasil');
+    const r = await fetch('https://nominatim.openstreetmap.org/search?q='+q+'&format=json&limit=1&countrycodes=br', {signal: AbortSignal.timeout(4000)});
+    const d = await r.json();
+    if (d && d[0]) return [parseFloat(d[0].lat), parseFloat(d[0].lon)];
+  } catch(e) {}
+  return null;
+}
+
+// Legacy sync resolve for quick KC lookup only
+function resolve(name) {
+  const up = name.toUpperCase().trim();
+  if (GC[name]) return GC[name];
+  if (KC[up]) return KC[up];
+  for (const [k,v] of Object.entries(KC)) {
+    const n = normalize(up), kn = normalize(k);
+    if (n===kn || (n.includes(kn) && kn.length>4)) return v;
+  }
+  return null;
+}
+
+// ─── STEP 1: PROCESSAR ────────────────────────────────────────────────────────
+async function processar() {
+  const raw = document.getElementById('addr-input').value;
+  const lines = raw.split('\n').map(l => l.trim()).filter(l => l.length > 1);
+  if (!lines.length) return;
+
+  document.getElementById('btn-proc').disabled = true;
+  document.getElementById('btn-proc').textContent = 'Localizando endereços...';
+
+  // Build pts with quick sync resolve first
+  pts = lines.map((line) => {
+    const name = line.replace(/^\d{5,10}\s+/, '').trim();
+    const coord = resolve(name);
+    return { name, coord, ok: !!coord, pending: !coord };
+  });
+
+  renderPreview();
+  goStep(2);
+  document.getElementById('s-pts').textContent = pts.filter(p=>p.ok).length;
+  document.getElementById('btn-back').classList.remove('hide');
+  document.getElementById('btn-reset').classList.remove('hide');
+
+  // Async resolve remaining (uses agency DB + geocoding)
+  const pending = pts.filter(p => p.pending);
+  if (pending.length) {
+    document.getElementById('spin-wrap').classList.add('on');
+    for (const p of pending) {
+      const coord = await resolveCoord(p.name);
+      p.coord = coord;
+      p.ok = !!coord;
+      p.pending = false;
+      renderPreview();
+      document.getElementById('s-pts').textContent = pts.filter(x=>x.ok).length;
+    }
+    document.getElementById('spin-wrap').classList.remove('on');
+  }
+
+  const good = pts.filter(p => p.ok);
+  clearLayers();
+  good.forEach(p => {
+    const mk = L.circleMarker(p.coord, { radius: 7, fillColor: '#64748b', color: '#fff', weight: 2, fillOpacity: 1 })
+      .addTo(map).bindPopup(`<b>${p.name}</b>`);
+    layers.push(mk);
+  });
+  if (good.length) map.fitBounds(L.latLngBounds(good.map(p => p.coord)), { padding: [40,40] });
+
+  document.getElementById('btn-proc').disabled = false;
+  document.getElementById('btn-proc').textContent = 'Processar endereços →';
+  toast(`${good.length}/${lines.length} localizados · ${lines.length - good.length} não encontrados`);
+}
+
+function renderPreview() {
+  document.getElementById('preview').innerHTML = pts.map((p, i) =>
+    `<div class="pv-item ${p.pending ? 'pend' : (p.ok ? 'ok' : 'err')}">
+      <span class="pv-n">${i+1}</span>
+      <span class="pv-name">${p.name}</span>
+      <span class="pv-st">${p.pending ? '…' : (p.ok ? '✓' : '✗ não encontrado')}</span>
+    </div>`
+  ).join('');
+}
+
+// ─── STEP NAV ─────────────────────────────────────────────────────────────────
+function goStep(n) {
+  document.getElementById('pane1').classList.toggle('hide', n !== 1);
+  document.getElementById('pane2').classList.toggle('hide', n !== 2);
+  document.getElementById('pane3').classList.toggle('hide', n !== 3);
+  document.getElementById('tab1').classList.toggle('on', n === 1);
+  document.getElementById('tab2').classList.toggle('on', n === 2);
+  document.getElementById('tab3').classList.toggle('on', n === 3);
+  document.getElementById('tab2').disabled = pts.length === 0;
+  document.getElementById('btn-back').classList.toggle('hide', n !== 2);
+  if (n === 3) renderAgencyPane();
+}
+
+function saveNewAgency() {
+  const name = document.getElementById('ag-name').value.trim();
+  const addr = document.getElementById('ag-addr').value.trim();
+  const city = document.getElementById('ag-city').value.trim();
+  if (!name || !addr || !city) { toast('Preencha nome, endereço e cidade'); return; }
+  addCustomAgency(name, addr, city);
+  document.getElementById('ag-name').value = '';
+  document.getElementById('ag-addr').value = '';
+  document.getElementById('ag-city').value = '';
+  // Clear geocode cache for this name so it re-resolves
+  delete GC[name.toUpperCase().trim()];
+  renderAgencyPane();
+  toast(`✓ "${name}" salva!`);
+}
+
+function renderAgencyPane() {
+  const custom = loadCustom();
+  const keys = Object.keys(custom);
+  document.getElementById('custom-count').textContent = keys.length + ' salvas';
+  document.getElementById('db-count').textContent = Object.keys(AG_DB).length;
+
+  // Custom list
+  document.getElementById('custom-list').innerHTML = keys.length === 0
+    ? '<div style="padding:1rem;text-align:center;font-family:var(--mono);font-size:.72rem;color:var(--muted);">Nenhuma agência personalizada ainda</div>'
+    : keys.map(k => `<div class="ag-row">
+        <span class="ag-tag">CUSTOM</span>
+        <span class="ag-name">${k}</span>
+        <span class="ag-addr">${custom[k].addr}</span>
+        <button class="ag-del" onclick="delCustom('${k.replace(/'/g,"\\'")}')">✕</button>
+      </div>`).join('');
+
+  renderDBList();
+}
+
+function delCustom(name) {
+  deleteCustomAgency(name);
+  delete GC[name];
+  renderAgencyPane();
+  toast(`"${name}" removida`);
+}
+
+function renderDBList() {
+  const q = (document.getElementById('db-search').value || '').toUpperCase().trim();
+  const entries = Object.entries(AG_DB).filter(([k]) => !q || k.includes(q) || k.startsWith(q.split(' ')[0]));
+  const shown = entries.slice(0, 80);
+  document.getElementById('db-list').innerHTML = shown.map(([k,v]) =>
+    `<div class="ag-row">
+      <span class="ag-name">${k}</span>
+      <span class="ag-addr">${v.addr}</span>
+    </div>`
+  ).join('') + (entries.length > 80 ? `<div style="padding:.5rem;text-align:center;font-family:var(--mono);font-size:.65rem;color:var(--muted);">+${entries.length-80} resultados — refine a busca</div>` : '');
+}
+
+// ─── BASE SWITCH ──────────────────────────────────────────────────────────────
+function setBase(b) {
+  base = b;
+  document.getElementById('pill-c1').className = 'pill' + (b === 'c1' ? ' c1' : '');
+  document.getElementById('pill-c2').className = 'pill' + (b === 'c2' ? ' c2' : '');
+  map.setView(b === 'c1' ? [-22.9,-47.0] : [-23.4,-46.8], 9);
+}
+
+// ─── MATH ─────────────────────────────────────────────────────────────────────
+function hav(a, b) {
+  const R = 6371, r = x => x * Math.PI / 180;
+  const dLat = r(b[0]-a[0]), dLon = r(b[1]-a[1]);
+  return R * 2 * Math.asin(Math.sqrt(Math.sin(dLat/2)**2 + Math.cos(r(a[0]))*Math.cos(r(b[0]))*Math.sin(dLon/2)**2));
+}
+
+function nearestNeighbor(arr) {
+  if (arr.length <= 1) return arr;
+  const visited = new Set([0]), result = [arr[0]];
+  while (result.length < arr.length) {
+    const last = result[result.length-1];
+    let bi = -1, bd = Infinity;
+    arr.forEach((p,i) => { if (visited.has(i)) return; const d = hav(last.coord,p.coord); if (d<bd){bd=d;bi=i;} });
+    visited.add(bi); result.push(arr[bi]);
+  }
+  return result;
+}
+
+function kMeans(arr, k, iter=25) {
+  k = Math.min(k, arr.length);
+  // Init centroids spread out
+  let cents = [arr[0].coord];
+  for (let c=1;c<k;c++) {
+    let best=null,bd=-1;
+    arr.forEach(p => { const md=Math.min(...cents.map(ct=>hav(p.coord,ct))); if(md>bd){bd=md;best=p.coord;} });
+    cents.push(best);
+  }
+  let clusters = [];
+  for (let it=0;it<iter;it++) {
+    clusters = Array.from({length:k}, ()=>[]);
+    arr.forEach((p,pi) => {
+      let bi=0,bd=Infinity;
+      cents.forEach((ct,ci)=>{const d=hav(p.coord,ct);if(d<bd){bd=d;bi=ci;}});
+      clusters[bi].push(pi);
+    });
+    clusters.forEach((cl,ci) => {
+      if (!cl.length) return;
+      cents[ci] = [cl.reduce((s,pi)=>s+arr[pi].coord[0],0)/cl.length, cl.reduce((s,pi)=>s+arr[pi].coord[1],0)/cl.length];
+    });
+  }
+  return clusters.filter(cl=>cl.length>0).map(cl=>cl.map(pi=>arr[pi]));
+}
+
+// ─── ROUTE COMPUTE ────────────────────────────────────────────────────────────
+function estimateLegs(stops) {
+  let dist=0; const legs=[];
+  for(let i=0;i<stops.length-1;i++){
+    const d=hav(stops[i].coord,stops[i+1].coord)*1.35;
+    legs.push({dist:d,min:d/60*60}); dist+=d;
+  }
+  return {dist,min:dist/60*60,legs,geo:null};
+}
+
+async function computeOSRM(stops) {
+  const est = estimateLegs(stops);
+  if (stops.length < 2) return est;
+  try {
+    const cs = stops.map(s=>`${s.coord[1]},${s.coord[0]}`).join(';');
+    const url = `https://router.project-osrm.org/route/v1/driving/${cs}?overview=full&geometries=geojson&steps=false`;
+    const res = await fetch(url, {signal: AbortSignal.timeout(5000)});
+    if (!res.ok) throw 0;
+    const d = await res.json();
+    if (d.code==='Ok' && d.routes[0]) {
+      const r = d.routes[0];
+      return {
+        dist: r.distance/1000,
+        min: r.duration/60,
+        legs: r.legs.map(l=>({dist:l.distance/1000,min:l.duration/60})),
+        geo: r.geometry.coordinates.map(c=>[c[1],c[0]])
+      };
+    }
+  } catch(e) {}
+  return est;
+}
+
+// ─── NAME ROUTE ───────────────────────────────────────────────────────────────
+function nameRoute(stops) {
+  const cities = stops.map(s => {
+    const up = s.name.toUpperCase();
+    for (const k of Object.keys(KC)) { if (up.includes(k)) return k.split(' ').map(w=>w[0]+w.slice(1).toLowerCase()).join(' '); }
+    return s.name.split(/[\-,]/)[0].trim();
+  });
+  const freq = {};
+  cities.forEach(c => freq[c]=(freq[c]||0)+1);
+  return Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,2).map(e=>e[0]).join(' + ');
+}
+
+// ─── BUILD ROUTES ─────────────────────────────────────────────────────────────
+async function buildRoutes(clusters) {
+  rts = [];
+  clearLayers();
+  document.getElementById('spin2').classList.add('on');
+  document.getElementById('spin-wrap').classList.add('on');
+
+  for (let ci=0; ci<clusters.length; ci++) {
+    if (!clusters[ci].length) continue;
+    const stops = nearestNeighbor(clusters[ci]);
+    const {dist,min,legs,geo} = await computeOSRM(stops);
+    rts.push({ name: nameRoute(stops), color: COLORS[ci%COLORS.length], stops, totalDist: dist, totalTime: min, legs, geo });
+  }
+
+  document.getElementById('spin2').classList.remove('on');
+  document.getElementById('spin-wrap').classList.remove('on');
+
+  const total = rts.reduce((s,r)=>s+r.totalDist,0);
+  document.getElementById('s-rot').textContent = rts.length;
+  document.getElementById('s-km').textContent = total.toFixed(0);
+  document.getElementById('btn-export').classList.remove('hide');
+  document.getElementById('hdr-mid').textContent = `${rts.length} rotas · ${total.toFixed(0)} km total`;
+
+  renderCards();
+  renderMap();
+}
+
+function autoRoute() {
+  const good = pts.filter(p=>p.ok);
+  if (!good.length) return;
+  const k = parseInt(document.getElementById('n-routes').value) || 3;
+  buildRoutes(kMeans(good, k));
+}
+
+function splitRoute() {
+  const good = pts.filter(p=>p.ok);
+  if (!good.length) return;
+  const k = parseInt(document.getElementById('n-routes').value) || 3;
+  const sorted = [...good].sort((a,b)=>(a.coord[0]+a.coord[1])-(b.coord[0]+b.coord[1]));
+  const size = Math.ceil(sorted.length/k);
+  const clusters = [];
+  for (let i=0;i<sorted.length;i+=size) clusters.push(sorted.slice(i,i+size));
+  buildRoutes(clusters);
+}
+
+// ─── RENDER CARDS ─────────────────────────────────────────────────────────────
+function hhmm(m) { return `${Math.floor(m/60)}h${String(Math.round(m%60)).padStart(2,'0')}min`; }
+
+function renderCards() {
+  const scroll = document.getElementById('rscroll');
+  if (!rts.length) {
+    scroll.innerHTML = '<div class="empty"><div class="empty-ico">🗺</div><div>Clique em "Auto região" ou "Dividir N"</div></div>';
+    return;
+  }
+
+  // Preserve open state
+  const open = {};
+  rts.forEach((_,i) => { const el = document.getElementById(`rc-${i}`); open[i] = el ? el.classList.contains('open') : true; });
+
+  scroll.innerHTML = rts.map((r,i) => `
+    <div class="rcard ${open[i]!==false?'open':''}" id="rc-${i}">
+      <div class="rcard-hdr" style="border-left-color:${r.color}" onclick="toggleCard(${i})">
+        <div class="rcard-hl">
+          <span class="rcard-arrow">${open[i]!==false?'▾':'▸'}</span>
+          <div class="rcard-info">
+            <div class="rcard-name" style="color:${r.color}">ROTA ${i+1} — ${r.name.toUpperCase()}</div>
+            <div class="rcard-meta">${r.stops.length} paradas · <b>${r.totalDist.toFixed(0)} km</b> · ${hhmm(r.totalTime)}</div>
+          </div>
+        </div>
+        <button class="maps-btn" style="border:1px solid ${r.color};color:${r.color}" onclick="event.stopPropagation();openMaps(${i})">↗ Maps</button>
+      </div>
+      <div class="rcard-body">
+        <ul class="stop-list" id="sl-${i}">
+          ${r.stops.map((s,si) => stopHTML(s,si,i,r)).join('')}
+        </ul>
+      </div>
+    </div>
+  `).join('');
+
+  rts.forEach((_,i) => attachDrag(i));
+}
+
+function stopHTML(s, si, ri, r) {
+  const leg = r.legs[si];
+  const last = si === r.stops.length-1;
+  const dist = !last && leg ? `→ ${leg.dist.toFixed(1)}km` : (last ? '🏁' : '');
+  return `<li class="stop" draggable="true" data-ri="${ri}" data-si="${si}">
+    <span class="stop-drag">⠿</span>
+    <span class="stop-num" style="background:${r.color}">${si+1}</span>
+    <span class="stop-name" title="${s.name}">${s.name}</span>
+    <span class="stop-dist">${dist}</span>
+    <button class="stop-rm" onclick="removeStop(${ri},${si})">✕</button>
+  </li>`;
+}
+
+function toggleCard(i) {
+  const el = document.getElementById(`rc-${i}`);
+  if (!el) return;
+  el.classList.toggle('open');
+  el.querySelector('.rcard-arrow').textContent = el.classList.contains('open') ? '▾' : '▸';
+}
+
+function removeStop(ri, si) {
+  rts[ri].stops.splice(si,1);
+  if (!rts[ri].stops.length) rts.splice(ri,1);
+  else { const e=estimateLegs(rts[ri].stops); rts[ri].totalDist=e.dist; rts[ri].totalTime=e.min; rts[ri].legs=e.legs; }
+  renderCards(); renderMap();
+}
+
+// ─── DRAG & DROP ──────────────────────────────────────────────────────────────
+function attachDrag(ri) {
+  const list = document.getElementById(`sl-${ri}`);
+  if (!list) return;
+  let src = null;
+
+  list.querySelectorAll('.stop').forEach(el => {
+    el.addEventListener('dragstart', e => { src=el; el.classList.add('dragging'); e.dataTransfer.effectAllowed='move'; });
+    el.addEventListener('dragend',   () => { el.classList.remove('dragging'); list.querySelectorAll('.stop').forEach(x=>x.classList.remove('dragover')); });
+    el.addEventListener('dragover',  e => { e.preventDefault(); list.querySelectorAll('.stop').forEach(x=>x.classList.remove('dragover')); el.classList.add('dragover'); });
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!src || src===el) return;
+      const from = +src.dataset.si, to = +el.dataset.si;
+      const r = rts[ri];
+      const [moved] = r.stops.splice(from,1);
+      r.stops.splice(to,0,moved);
+      const est = estimateLegs(r.stops);
+      r.totalDist=est.dist; r.totalTime=est.min; r.legs=est.legs;
+      renderCards(); renderMap();
+      computeOSRM(r.stops).then(res=>{ r.totalDist=res.dist;r.totalTime=res.min;r.legs=res.legs;r.geo=res.geo; renderCards();renderMap(); });
+    });
+  });
+}
+
+// ─── MAP RENDER ───────────────────────────────────────────────────────────────
+function renderMap() {
+  clearLayers();
+  const leg = document.getElementById('legend');
+  if (!rts.length) { leg.style.display='none'; return; }
+
+  leg.style.display = 'flex';
+  leg.innerHTML = rts.map((r,i) => `<div class="leg-row"><div class="leg-dot" style="background:${r.color}"></div>Rota ${i+1} — ${r.name.split('+')[0].trim()}</div>`).join('');
+
+  const all = [];
+  rts.forEach((r,ri) => {
+    // Line
+    if (r.geo && r.geo.length>1) {
+      layers.push(L.polyline(r.geo,{color:r.color,weight:4,opacity:.8}).addTo(map));
+    } else {
+      layers.push(L.polyline(r.stops.map(s=>s.coord),{color:r.color,weight:3,opacity:.6,dashArray:'7,4'}).addTo(map));
+    }
+    // Markers
+    r.stops.forEach((s,si) => {
+      all.push(s.coord);
+      const ico = L.divIcon({
+        className:'',
+        html:`<div style="width:22px;height:22px;border-radius:50%;background:${r.color};border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:9px;font-weight:700;color:#fff">${si+1}</div>`,
+        iconSize:[22,22],iconAnchor:[11,11]
+      });
+      const mk = L.marker(s.coord,{icon:ico}).addTo(map);
+      mk.bindPopup(`<b>Rota ${ri+1} · Parada ${si+1}</b><br>${s.name}`);
+      mk.on('click',()=>{ const card=document.getElementById(`rc-${ri}`); if(card&&!card.classList.contains('open'))toggleCard(ri); card&&card.scrollIntoView({behavior:'smooth',block:'nearest'}); });
+      layers.push(mk);
+    });
+  });
+  if (all.length) map.fitBounds(L.latLngBounds(all),{padding:[40,40]});
+}
+
+// ─── GOOGLE MAPS ──────────────────────────────────────────────────────────────
+function openMaps(ri) {
+  const addrs = rts[ri].stops.map(s=>encodeURIComponent(s.name+', São Paulo, Brasil'));
+  if (addrs.length<2) return;
+  window.open(`https://www.google.com/maps/dir/${addrs.join('/')}`, '_blank');
+}
+
+// ─── EXPORT ───────────────────────────────────────────────────────────────────
+function exportTxt() {
+  const lines = [`ROTEIRIZADOR — ${new Date().toLocaleDateString('pt-BR')}`, '='.repeat(50)];
+  rts.forEach((r,i) => {
+    lines.push('', `ROTA ${i+1} — ${r.name.toUpperCase()}`, `${r.stops.length} paradas | ${r.totalDist.toFixed(1)} km | ${hhmm(r.totalTime)}`, '-'.repeat(35));
+    r.stops.forEach((s,si)=>{ const l=r.legs[si]; lines.push(`  ${si+1}. ${s.name}${l?`  (→ ${l.dist.toFixed(1)}km)`:''}`); });
+  });
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([lines.join('\n')],{type:'text/plain'}));
+  a.download=`rotas_${new Date().toISOString().slice(0,10)}.txt`;
+  a.click();
+}
+
+// ─── RESET ────────────────────────────────────────────────────────────────────
+function resetAll() {
+  pts=[]; rts=[]; clearLayers();
+  document.getElementById('addr-input').value='';
+  document.getElementById('line-count').textContent='0 linhas';
+  document.getElementById('preview').innerHTML='';
+  document.getElementById('btn-proc').disabled=true;
+  document.getElementById('rscroll').innerHTML='<div class="empty"><div class="empty-ico">🗺</div><div>Clique em "Auto região" ou "Dividir N"</div></div>';
+  document.getElementById('legend').style.display='none';
+  document.getElementById('btn-reset').classList.add('hide');
+  document.getElementById('btn-export').classList.add('hide');
+  document.getElementById('btn-back').classList.add('hide');
+  document.getElementById('hdr-mid').textContent='Cole os endereços e gere as rotas';
+  document.getElementById('s-pts').textContent='0';
+  document.getElementById('s-rot').textContent='0';
+  document.getElementById('s-km').textContent='—';
+  document.getElementById('tab2').disabled=true;
+  goStep(1);
+  map.setView([-22.95,-47.0],9);
+}
+
+// ─── TOAST ────────────────────────────────────────────────────────────────────
+function toast(msg) {
+  const t=document.getElementById('toast');
+  t.textContent=msg; t.classList.add('on');
+  setTimeout(()=>t.classList.remove('on'),3000);
+}
+
+// ─── CUSTOM AGENCY STORAGE ────────────────────────────────────────────────────
+function loadCustom() {
+  try { return JSON.parse(localStorage.getItem('custom_agencies') || '{}'); } catch(e) { return {}; }
+}
+function saveCustom(data) {
+  localStorage.setItem('custom_agencies', JSON.stringify(data));
+}
+function addCustomAgency(name, addr, city) {
+  const d = loadCustom();
+  d[name.toUpperCase().trim()] = { addr: addr + ', ' + city + ', SP, Brasil', city: city.toUpperCase() };
+  saveCustom(d);
+}
+function deleteCustomAgency(name) {
+  const d = loadCustom();
+  delete d[name.toUpperCase().trim()];
+  saveCustom(d);
+}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+  // Init map
+  initMap();
+
+  // Textarea listener
+  document.getElementById('addr-input').addEventListener('input', function() {
+    const n = this.value.split('\n').filter(l=>l.trim().length>1).length;
+    document.getElementById('line-count').textContent = n + ' linhas';
+    document.getElementById('btn-proc').disabled = n === 0;
+    document.getElementById('preview').innerHTML = '';
+  });
+});
+</script>
+</body>
+</html>

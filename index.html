@@ -433,9 +433,11 @@ async function processar() {
 
   // Build pts with quick sync resolve first
   pts = lines.map((line) => {
+    const osMatch = line.match(/^(\d{5,10})\s+/);
+    const os = osMatch ? osMatch[1] : null;
     const name = line.replace(/^\d{5,10}\s+/, '').trim();
     const coord = resolve(name);
-    return { name, coord, ok: !!coord, pending: !coord };
+    return { name, os, coord, ok: !!coord, pending: !coord };
   });
 
   renderPreview();
@@ -780,6 +782,10 @@ function attachDrag(ri) {
 }
 
 // ─── MAP RENDER ───────────────────────────────────────────────────────────────
+function coordKey(coord) {
+  return coord[0].toFixed(5) + ',' + coord[1].toFixed(5);
+}
+
 function renderMap() {
   clearLayers();
   const leg = document.getElementById('legend');
@@ -789,6 +795,19 @@ function renderMap() {
   leg.innerHTML = rts.map((r,i) => `<div class="leg-row"><div class="leg-dot" style="background:${r.color}"></div>Rota ${i+1} — ${r.name.split('+')[0].trim()}</div>`).join('');
 
   const all = [];
+
+  // Group stops by coordinate key to detect multiple chamados at same location
+  // Map: coordKey -> [{stop, si, ri, r}, ...]
+  const coordGroups = {};
+
+  rts.forEach((r,ri) => {
+    r.stops.forEach((s,si) => {
+      const key = coordKey(s.coord);
+      if (!coordGroups[key]) coordGroups[key] = [];
+      coordGroups[key].push({s, si, ri, r});
+    });
+  });
+
   rts.forEach((r,ri) => {
     // Line
     if (r.geo && r.geo.length>1) {
@@ -799,14 +818,76 @@ function renderMap() {
     // Markers
     r.stops.forEach((s,si) => {
       all.push(s.coord);
+      const key = coordKey(s.coord);
+      const group = coordGroups[key];
+      const count = group.length;
+
+      // Only render marker once per unique coord (first occurrence)
+      if (group[0].ri !== ri || group[0].si !== si) return;
+
+      // Badge: show count if multiple chamados at same location
+      const badgeHtml = count > 1
+        ? `<div style="position:absolute;top:-5px;right:-5px;background:#ef4444;color:#fff;border-radius:50%;width:14px;height:14px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;border:1.5px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.3)">${count}</div>`
+        : '';
+
       const ico = L.divIcon({
         className:'',
-        html:`<div style="width:22px;height:22px;border-radius:50%;background:${r.color};border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:9px;font-weight:700;color:#fff">${si+1}</div>`,
+        html:`<div style="position:relative;width:22px;height:22px">
+          <div style="width:22px;height:22px;border-radius:50%;background:${r.color};border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-family:monospace;font-size:9px;font-weight:700;color:#fff">${si+1}</div>
+          ${badgeHtml}
+        </div>`,
         iconSize:[22,22],iconAnchor:[11,11]
       });
+
       const mk = L.marker(s.coord,{icon:ico}).addTo(map);
-      mk.bindPopup(`<b>Rota ${ri+1} · Parada ${si+1}</b><br>${s.name}`);
-      mk.on('click',()=>{ const card=document.getElementById(`rc-${ri}`); if(card&&!card.classList.contains('open'))toggleCard(ri); card&&card.scrollIntoView({behavior:'smooth',block:'nearest'}); });
+
+      // Build popup content showing all chamados at this location
+      let popupHtml;
+      if (count === 1) {
+        const osTag = s.os ? `<span style="font-family:monospace;font-size:10px;color:#71717a">OS ${s.os}</span><br>` : '';
+        popupHtml = `<b>Rota ${ri+1} · Parada ${si+1}</b><br>${osTag}${s.name}`;
+      } else {
+        const groupedByRoute = {};
+        group.forEach(({s: gs, si: gsi, ri: gri, r: gr}) => {
+          const label = `Rota ${gri+1}`;
+          if (!groupedByRoute[label]) groupedByRoute[label] = {color: gr.color, items: []};
+          groupedByRoute[label].items.push({name: gs.name, si: gsi, os: gs.os});
+        });
+
+        const routeSections = Object.entries(groupedByRoute).map(([label, val]) => {
+          const items = val.items.map(it =>
+            `<div style="display:flex;align-items:center;gap:6px;padding:3px 0;border-bottom:1px solid #f0eeea;">
+              <span style="background:${val.color};color:#fff;border-radius:50%;width:16px;height:16px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;flex-shrink:0">${it.si+1}</span>
+              <div style="min-width:0">
+                ${it.os ? `<div style="font-family:monospace;font-size:9px;color:#71717a">OS ${it.os}</div>` : ''}
+                <div style="font-size:11px;color:#333">${it.name}</div>
+              </div>
+            </div>`
+          ).join('');
+          return `<div style="margin-bottom:6px">
+            <div style="font-family:monospace;font-size:10px;font-weight:700;color:${val.color};margin-bottom:3px;text-transform:uppercase">${label}</div>
+            ${items}
+          </div>`;
+        }).join('');
+
+        popupHtml = `
+          <div style="min-width:200px;max-width:260px">
+            <div style="font-family:monospace;font-size:11px;font-weight:700;color:#18181b;margin-bottom:6px;padding-bottom:5px;border-bottom:2px solid #e0ddd7">
+              📍 ${count} chamados neste local
+            </div>
+            ${routeSections}
+          </div>`;
+      }
+
+      mk.bindPopup(popupHtml, {maxWidth: 280});
+      mk.on('click',()=>{
+        // If single stop, also scroll to route card
+        if (count === 1) {
+          const card=document.getElementById(`rc-${ri}`);
+          if(card&&!card.classList.contains('open'))toggleCard(ri);
+          card&&card.scrollIntoView({behavior:'smooth',block:'nearest'});
+        }
+      });
       layers.push(mk);
     });
   });
